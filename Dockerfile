@@ -17,4 +17,4 @@ ENV SPOTIPY_CLIENT_ID=""
 ENV SPOTIPY_CLIENT_SECRET=""
 ENV SPOTIPY_REDIRECT_URI=""
 
-CMD [ "python3", "-u", "main.py" ]
+CMD [ "python3", "-u", "app.py" ]
