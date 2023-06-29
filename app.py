@@ -56,7 +56,7 @@ def main() -> None:
                 if last_progress and last_track_title:
                     if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
                         add = True
-                    elif currently_playing["item"]["name"] == last_track_title:
+                    elif currently_playing["item"]["name"] != last_track_title:
                         add = True
                 else:
                     add = True
