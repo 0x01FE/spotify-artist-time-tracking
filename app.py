@@ -1,48 +1,107 @@
-from flask import Flask, request, session, redirect, current_app
-from flask_session import Session
-import os
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-
-# Good example of how redirect to your own site for the URI auth https://github.com/spotipy-dev/spotipy/blob/master/examples/app.py
-# You're probably going to want to use waitress to have a "prod safe" web server
-
-scopes = "user-read-currently-playing user-read-recently-played user-top-read"
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.random(64)
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_FILE_DIR'] = './.flask_session/'
-Session(app)
-
-
-
-@app.route('/')
-def index():
-    return current_app.send_static_file('index.html')
+import os
+import json
+from time import sleep
+from configparser import ConfigParser
+from spotipy.oauth2 import SpotifyOAuth
 
 
 
 
-@app.route('/spotify')
-def spotify():
+wait_time = 90 # in seconds
 
-    cache_handler = spotipy.cache_handler.FlaskSessionCacheHandler(session)
-    auth_manager = spotipy.oauth2.SpotifyOAuth(scope=scopes, cache_handler=cache_handler, show_dialog=True)
+config = ConfigParser()
+config.read("config.ini")
+client_id = config["SETTINGS"]["CLIENT_ID"]
+client_secret = config["SETTINGS"]["CLIENT_SECRET"]
+redirect_uri = config["SETTINGS"]["REDIRECT_URI"]
+scopes = config["SETTINGS"]["SCOPES"]
+
+os.environ["SPOTIPY_CLIENT_ID"] = client_id
+os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
+os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
-    if request.args.get("code"):
-        # Step 2. Being redirected from Spotify auth page
-        auth_manager.get_access_token(request.args.get("code"))
-        return redirect('/')
-
-    if not auth_manager.validate_token(cache_handler.get_cached_token()):
-        # Step 1. Display sign in link when no token
-        auth_url = auth_manager.get_authorize_url()
-        return f'<h2><a href="{auth_url}">Sign in</a></h2>'
-
+spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes))
 
 
 
-if __name__ == '__main__':
-    app.run()
+
+# Returns dict of music-time.json
+def read() -> dict:
+    with open("music-time.json", "r") as f:
+        return json.loads(f.read())
+
+
+
+# Writes a dict to music-time.json
+def write(info : dict) -> None:
+    with open("music-time.json", "w") as f:
+        f.write(json.dumps(info, indent=4))
+
+
+
+def main() -> None:
+    last_progress = None
+    last_track_title = None
+
+    while True:
+        currently_playing = spotify.current_user_playing_track()
+        add = False
+
+        # Series of checks to see if the program should actually consider this a "listen"
+        if currently_playing:
+            if currently_playing["is_playing"]:
+                if last_progress and last_track_title:
+                    if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
+                        add = True
+                else:
+                    add = True
+
+        if add:
+            print(f'Song detected, {currently_playing["item"]["name"]}')
+            data = read()
+
+            duration = currently_playing["item"]["duration_ms"]
+
+            # Add to artists listening time
+            for artist in currently_playing["item"]["artists"]:
+                if artist["name"] not in data["artists"]:
+                    data["artists"][artist["name"]] = duration
+
+                else:
+                    data["artists"][artist["name"]] += duration
+
+
+            # Add to album listen time
+            album = currently_playing["item"]["album"]["name"]
+
+            if album not in data["albums"]:
+                data["albums"][album] = duration
+
+            else:
+                data["albums"][album] += duration
+
+
+            # Add to song listen time
+            track_title = currently_playing["item"]["name"]
+
+            if track_title not in data["songs"]:
+                data["songs"][track_title] = duration
+
+            else:
+                data["songs"][track_title] += duration
+
+            last_progress = duration
+            last_track_title = track_title
+
+            write(data)
+
+        # Wait before checking again to avoid being rate limited or using my API quota
+        sleep(wait_time)
+
+
+
+
+if __name__ == "__main__":
+    main()
