@@ -46,6 +46,7 @@ def main() -> None:
     last_track_title = None
 
     while True:
+        print("Looking for a playing song...")
         currently_playing = spotify.current_user_playing_track()
         add = False
 
@@ -54,6 +55,8 @@ def main() -> None:
             if currently_playing["is_playing"]:
                 if last_progress and last_track_title:
                     if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
+                        add = True
+                    elif currently_playing["item"]["name"] == last_track_title:
                         add = True
                 else:
                     add = True
@@ -97,7 +100,11 @@ def main() -> None:
 
             write(data)
 
+        else:
+            print("Listening check not passed.")
+
         # Wait before checking again to avoid being rate limited or using my API quota
+        print(f"Wating {wait_time} seconds...")
         sleep(wait_time)
 
 
