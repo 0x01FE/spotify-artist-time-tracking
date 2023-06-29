@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.8-slim-buster
+FROM python:3.11.4-slim-bookworm
 
 WORKDIR .
 
@@ -12,9 +12,5 @@ RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt
 
 COPY . .
-
-ENV SPOTIPY_CLIENT_ID=""
-ENV SPOTIPY_CLIENT_SECRET=""
-ENV SPOTIPY_REDIRECT_URI=""
 
 CMD [ "python3", "-u", "app.py" ]
