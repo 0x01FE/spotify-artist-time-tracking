@@ -4,7 +4,7 @@ import json
 from time import sleep
 from configparser import ConfigParser
 from spotipy.oauth2 import SpotifyOAuth
-
+from requests.exceptions import ConnectionError
 
 
 cache_path = "./data/.cache"
@@ -54,7 +54,13 @@ def main() -> None:
 
     while True:
         print("Looking for a playing song...")
-        currently_playing = spotify.current_user_playing_track()
+        try:
+            currently_playing = spotify.current_user_playing_track()
+        except ConnectionError:
+            print(f"ConnectionError, retrying in {wait_time} seconds...")
+            sleep(wait_time)
+            continue
+
         add = False
 
         # Series of checks to see if the program should actually consider this a "listen"
