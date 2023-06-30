@@ -40,7 +40,7 @@ spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=
 def add_time(currently_playing : dict, filename : str) -> None:
 
     if not os.path.exists(json_path + filename):
-        data = { "artists" : {}, "albums" : {}, "songs" : {} }
+        data = {}
     else:
         with open(json_path + filename, "r") as f:
             data = json.loads(f.read())
@@ -49,30 +49,32 @@ def add_time(currently_playing : dict, filename : str) -> None:
 
     # Add to artists listening time
     for artist in currently_playing["item"]["artists"]:
-        if artist["name"] not in data["artists"]:
-            data["artists"][artist["name"]] = duration
+        artist_name = artist["name"]
+
+        if artist_name not in data:
+            data[artist_name] = { "overall" : duration, "albums" : {} }
 
         else:
-            data["artists"][artist["name"]] += duration
+            data[artist_name]["overall"] += duration
 
-    # Add to album listen time
-    album = currently_playing["item"]["album"]["name"]
+        # Add to album listen time
+        album = currently_playing["item"]["album"]["name"]
 
-    if album not in data["albums"]:
-        data["albums"][album] = duration
+        if album not in data[artist_name]["albums"]:
+            data[artist_name]["albums"][album] = { "overall" : duration, "songs" : {} }
 
-    else:
-        data["albums"][album] += duration
+        else:
+            data[artist_name]["albums"][album]["overall"] += duration
 
 
-    # Add to song listen time
-    track_title = currently_playing["item"]["name"]
+        # Add to song listen time
+        track_title = currently_playing["item"]["name"]
 
-    if track_title not in data["songs"]:
-        data["songs"][track_title] = duration
+        if track_title not in data[artist_name]["albums"][album]["songs"]:
+            data[artist_name]["albums"][album]["songs"][track_title] = duration
 
-    else:
-        data["songs"][track_title] += duration
+        else:
+            data[artist_name]["albums"][album]["songs"][track_title] += duration
 
     with open(json_path + filename, "w") as f:
         f.write(json.dumps(data, indent=4))
