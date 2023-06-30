@@ -12,10 +12,11 @@ from datetime import datetime
 
 config = ConfigParser()
 config.read("config.ini")
-client_id = config["SETTINGS"]["CLIENT_ID"]
-client_secret = config["SETTINGS"]["CLIENT_SECRET"]
-redirect_uri = config["SETTINGS"]["REDIRECT_URI"]
-scopes = config["SETTINGS"]["SCOPES"]
+client_id = config["SPOTIFY"]["CLIENT_ID"]
+client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
+redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
+scopes = config["SPOTIFY"]["SCOPES"]
+
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 cache_path = config["SETTINGS"]["CACHE_PATH"]
 json_path = config["SETTINGS"]["JSON_PATH"]
