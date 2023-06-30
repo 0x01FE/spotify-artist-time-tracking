@@ -7,8 +7,8 @@ from spotipy.oauth2 import SpotifyOAuth
 
 
 
-cache_path = ".\\data\\.cache"
-json_path = ".\\data\\music-time.json"
+cache_path = "./data/.cache"
+json_path = "./data/music-time.json"
 
 wait_time = 90 # in seconds
 
@@ -24,7 +24,12 @@ os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
 os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
-spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_path=cache_path))
+with open("./data/.cache", "r") as f:
+    token_info = json.loads(f.read())
+
+
+cache_handler = spotipy.MemoryCacheHandler(token_info=token_info)
+spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
 
 
 
