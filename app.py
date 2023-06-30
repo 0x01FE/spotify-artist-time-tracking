@@ -36,7 +36,7 @@ spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=
 
 
 
-# Writes a dict to music-time.json
+# Write info from currently_playing to a specified file
 def add_time(currently_playing : dict, filename : str) -> None:
 
     if not os.path.exists(json_path + filename):
