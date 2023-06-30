@@ -49,7 +49,7 @@ def add_time(currently_playing : dict, filename : str) -> None:
 
     # Add to artists listening time
     for artist in currently_playing["item"]["artists"]:
-        artist_name = artist["name"]
+        artist_name = artist["name"].replace(" ", "-")
 
         if artist_name not in data:
             data[artist_name] = { "overall" : duration, "albums" : {} }
