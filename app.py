@@ -6,7 +6,7 @@ from configparser import ConfigParser
 from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import ConnectionError
 from datetime import datetime
-
+from pytz import timezone
 
 
 
@@ -114,7 +114,7 @@ def main() -> None:
 
         if add:
             print(f'Song detected, {currently_playing["item"]["name"]}')
-            today_file = datetime.now().strftime("%d-%m-%Y") + ".json"
+            today_file = datetime.now(timezone("US/Central")).strftime("%d-%m-%Y") + ".json"
 
             for file in [today_file, "overall.json"]:
                 add_time(currently_playing, file)
