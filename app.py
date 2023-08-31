@@ -1,6 +1,7 @@
 import spotipy
 import os
 import json
+import sqlite3 as sql
 from time import sleep
 from configparser import ConfigParser
 from spotipy.oauth2 import SpotifyOAuth
@@ -20,6 +21,7 @@ scopes = config["SPOTIFY"]["SCOPES"]
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 cache_path = config["SETTINGS"]["CACHE_PATH"]
 json_path = config["SETTINGS"]["JSON_PATH"]
+DATABASE = config["SETTINGS"]["DB_PATH"]
 
 os.environ["SPOTIPY_CLIENT_ID"] = client_id
 os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
@@ -35,9 +37,37 @@ spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=
 
 
 
+class Opener():
+    def __init__(self):
+        self.con = sql.connect(DATABASE)
+
+    def __enter__(self):
+        return self.con, self.con.cursor()
+
+    def __exit__(self, type, value, traceback):
+        self.con.commit()
+        self.con.close()
+
 
 # Write info from currently_playing to a specified file
 def add_time(currently_playing : dict, filename : str) -> None:
+
+    if data["context"]["type"] == "album":
+        playlist_id = data["context"]["uri"].split(':')[-1]
+        playlist = spotify.playlist(playlist_id)['name']
+
+    for artist in currently_playing["item"]["artists"]:
+        artist_name = artist["name"].replace(" ", "-").lower()
+
+        album = currently_playing["item"]["album"]["name"]
+        song = currently_playing["item"]["name"]
+        duration = currently_playing["item"]["duration_ms"]
+
+
+    with Opener() as (con, cur):
+        if playlist:
+            cur.execute("INSERT INTO overall VALUES (?, ?, ?, ?, ?)", artist_name, album, song, , playlist)
+
 
     if not os.path.exists(json_path + filename):
         data = {}

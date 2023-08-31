@@ -5,3 +5,4 @@ config.ini
 .cache
 *.json
 data
+*.db
