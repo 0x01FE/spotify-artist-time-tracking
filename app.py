@@ -8,7 +8,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import ConnectionError
 from datetime import datetime
 from pytz import timezone
-
+import db
 
 
 config = ConfigParser()
@@ -22,6 +22,8 @@ wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 cache_path = config["SETTINGS"]["CACHE_PATH"]
 json_path = config["SETTINGS"]["JSON_PATH"]
 DATABASE = config["SETTINGS"]["DB_PATH"]
+USER = config["SETTINGS"]["USER"]
+USER_ID = db.get_id("users", USER)
 
 os.environ["SPOTIPY_CLIENT_ID"] = client_id
 os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
@@ -50,12 +52,9 @@ class Opener():
 
 
 # Write info from currently_playing to a specified file
-def add_time(currently_playing : dict, filename : str) -> None:
+def add_time(currently_playing : dict) -> None:
 
-    if data["context"]["type"] == "album":
-        playlist_id = data["context"]["uri"].split(':')[-1]
-        playlist = spotify.playlist(playlist_id)['name']
-
+    # Grab the info from the API response
     for artist in currently_playing["item"]["artists"]:
         artist_name = artist["name"].replace(" ", "-").lower()
 
@@ -64,50 +63,66 @@ def add_time(currently_playing : dict, filename : str) -> None:
         duration = currently_playing["item"]["duration_ms"]
 
 
+    # Check if all the listening info has its corresponding id
+    if not (song_id := db.get_id("songs", song)):
+        song_id = db.add_id("songs", song)
+
+    if not (album_id := db.get_id("albums", album)):
+        album_id = db.add_id("albums", album)
+
+    if not (artist_id := db.get_id("artists", artist_name)):
+        artist_id = db.add_id("artists", artist_name)
+
+
+    # Add to overall
     with Opener() as (con, cur):
-        if playlist:
-            cur.execute("INSERT INTO overall VALUES (?, ?, ?, ?, ?)", artist_name, album, song, , playlist)
 
+        # Is this song already in table?
+        cur.execute("SELECT * FROM overall WHERE (song = ? AND album = ? AND artist = ?)", [song_id, album_id, artist_id])
+        results = cur.fetchall()
 
-    if not os.path.exists(json_path + filename):
-        data = {}
+    if not results:
+        db.insert(artist_id, album_id, song_id, duration, USER_ID)
+        print(f'New row insterted into overall. {song} by {artist_name}')
+
     else:
-        with open(json_path + filename, "r") as f:
-            data = json.loads(f.read())
+        if len(results) > 1:
+            print(f'Results were over one.\n{results}')
+            exit()
 
-    duration = currently_playing["item"]["duration_ms"]
+        result = results[0]
 
-    # Add to artists listening time
-    for artist in currently_playing["item"]["artists"]:
-        artist_name = artist["name"].replace(" ", "-").lower()
+        new_time = duration + result[3]
 
-        if artist_name not in data:
-            data[artist_name] = { "overall" : duration, "albums" : {} }
-
-        else:
-            data[artist_name]["overall"] += duration
-
-        # Add to album listen time
-        album = currently_playing["item"]["album"]["name"]
-
-        if album not in data[artist_name]["albums"]:
-            data[artist_name]["albums"][album] = { "overall" : duration, "songs" : {} }
-
-        else:
-            data[artist_name]["albums"][album]["overall"] += duration
+        db.update_time(result, new_time)
+        print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
 
 
-        # Add to song listen time
-        track_title = currently_playing["item"]["name"]
 
-        if track_title not in data[artist_name]["albums"][album]["songs"]:
-            data[artist_name]["albums"][album]["songs"][track_title] = duration
+    # Add to dated
+    today = datetime.now(timezone("US/Central"))
+    date = date.strftime("%Y-%m-%d")
 
-        else:
-            data[artist_name]["albums"][album]["songs"][track_title] += duration
+    with Opener() as (con, cur):
+        # Is this song already in table?
+        cur.execute("SELECT * FROM dated WHERE (song = ? AND album = ? AND artist = ? AND date = ?)", [song_id, album_id, artist_id, date])
+        results = cur.fetchall()
 
-    with open(json_path + filename, "w") as f:
-        f.write(json.dumps(data, indent=4))
+    if not results:
+        db.insert(artist_id, album_id, song_id, duration, USER_ID, date=date)
+        print(f'New row insterted into overall. {song} by {artist_name}')
+
+    else:
+        if len(results) > 1:
+            print(f'Results were over one.\n{results}')
+            exit()
+
+        result = results[0]
+
+        new_time = duration + result[3]
+
+        db.update_time(result, new_time)
+        print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
 
 
 
@@ -144,10 +159,8 @@ def main() -> None:
 
         if add:
             print(f'Song detected, {currently_playing["item"]["name"]}')
-            today_file = datetime.now(timezone("US/Central")).strftime("%d-%m-%Y") + ".json"
 
-            for file in [today_file, "overall.json"]:
-                add_time(currently_playing, file)
+            add_time(currently_playing)
 
             last_track_info["last_progress"] = currently_playing["item"]["duration_ms"]
             last_track_info["last_track_title"] = currently_playing["item"]["name"]
