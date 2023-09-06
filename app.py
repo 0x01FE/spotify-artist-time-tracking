@@ -63,66 +63,41 @@ def add_time(currently_playing : dict) -> None:
         duration = currently_playing["item"]["duration_ms"]
 
 
-    # Check if all the listening info has its corresponding id
-    if not (song_id := db.get_id("songs", song)):
-        song_id = db.add_id("songs", song)
+        # Check if all the listening info has its corresponding id
+        if not (song_id := db.get_id("songs", song)):
+            song_id = db.add_id("songs", song)
 
-    if not (album_id := db.get_id("albums", album)):
-        album_id = db.add_id("albums", album)
+        if not (album_id := db.get_id("albums", album)):
+            album_id = db.add_id("albums", album)
 
-    if not (artist_id := db.get_id("artists", artist_name)):
-        artist_id = db.add_id("artists", artist_name)
+        if not (artist_id := db.get_id("artists", artist_name)):
+            artist_id = db.add_id("artists", artist_name)
 
+        # Add to dated
+        print("Updating dated table...")
+        today = datetime.now(timezone("US/Central"))
+        date = today.strftime("%Y-%m-%d")
 
-    # Add to overall
-    with Opener() as (con, cur):
+        with Opener() as (con, cur):
+            # Is this song already in table?
+            cur.execute("SELECT * FROM dated WHERE (song = ? AND album = ? AND artist = ? AND date = ?)", [song_id, album_id, artist_id, date])
+            results = cur.fetchall()
 
-        # Is this song already in table?
-        cur.execute("SELECT * FROM overall WHERE (song = ? AND album = ? AND artist = ?)", [song_id, album_id, artist_id])
-        results = cur.fetchall()
+        if not results:
+            db.insert(artist_id, album_id, song_id, duration, USER_ID, date=today)
+            print(f'New row insterted into dated. {song} by {artist_name}')
 
-    if not results:
-        db.insert(artist_id, album_id, song_id, duration, USER_ID)
-        print(f'New row insterted into overall. {song} by {artist_name}')
+        else:
+            if len(results) > 1:
+                print(f'Results were over one.\n{results}')
+                exit()
 
-    else:
-        if len(results) > 1:
-            print(f'Results were over one.\n{results}')
-            exit()
+            result = results[0]
 
-        result = results[0]
+            new_time = duration + result[3]
 
-        new_time = duration + result[3]
-
-        db.update_time(result, new_time)
-        print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
-
-
-
-    # Add to dated
-    today = datetime.now(timezone("US/Central"))
-    date = date.strftime("%Y-%m-%d")
-
-    with Opener() as (con, cur):
-        # Is this song already in table?
-        cur.execute("SELECT * FROM dated WHERE (song = ? AND album = ? AND artist = ? AND date = ?)", [song_id, album_id, artist_id, date])
-        results = cur.fetchall()
-
-    if not results:
-        db.insert(artist_id, album_id, song_id, duration, USER_ID, date=date)
-        print(f'New row insterted into overall. {song} by {artist_name}')
-
-    else:
-        if len(results) > 1:
-            print(f'Results were over one.\n{results}')
-            exit()
-
-        result = results[0]
-
-        new_time = duration + result[3]
-
-        db.update_time(result, new_time)
-        print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
+            db.update_time(result, new_time)
+            print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
 
 
 
