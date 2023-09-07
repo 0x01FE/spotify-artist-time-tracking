@@ -52,52 +52,45 @@ class Opener():
 
 
 # Write info from currently_playing to a specified file
-def add_time(currently_playing : dict) -> None:
+def insert_song(currently_playing : dict, user : str) -> None:
 
+
+
+    artists = ""
     # Grab the info from the API response
+    song = currently_playing["item"]["name"]
+    song_spotify_id = currently_playing["item"]["id"]
+    duration = currently_playing["item"]["duration_ms"]
+
+    album = currently_playing["item"]["album"]["name"]
+    album_spotify_id = currently_playing["item"]["album"]["id"]
+    if not (album_id := db.get_id("albums", album)):
+        album_id = db.add_id("albums", album, album_spotify_id)
+
     for artist in currently_playing["item"]["artists"]:
         artist_name = artist["name"].replace(" ", "-").lower()
-
-        album = currently_playing["item"]["album"]["name"]
-        song = currently_playing["item"]["name"]
-        duration = currently_playing["item"]["duration_ms"]
-
-
-        # Check if all the listening info has its corresponding id
-        if not (song_id := db.get_id("songs", song)):
-            song_id = db.add_id("songs", song)
-
-        if not (album_id := db.get_id("albums", album)):
-            album_id = db.add_id("albums", album)
+        artist_spotify_id = artist["id"]
 
         if not (artist_id := db.get_id("artists", artist_name)):
-            artist_id = db.add_id("artists", artist_name)
+            artist_id = db.add_id("artists", artist_name, artist_spotify_id)
 
-        # Add to dated
-        print("Updating dated table...")
-        today = datetime.now(timezone("US/Central"))
-        date = today.strftime("%Y-%m-%d")
-
-        with Opener() as (con, cur):
-            # Is this song already in table?
-            cur.execute("SELECT * FROM dated WHERE (song = ? AND album = ? AND artist = ? AND date = ?)", [song_id, album_id, artist_id, date])
-            results = cur.fetchall()
-
-        if not results:
-            db.insert(artist_id, album_id, song_id, duration, USER_ID, date=today)
-            print(f'New row insterted into dated. {song} by {artist_name}')
-
+        # Don't add comma on last artits
+        if artist != currently_playing["item"]["artists"][-1]:
+            artists += f'{artist_id},'
         else:
-            if len(results) > 1:
-                print(f'Results were over one.\n{results}')
-                exit()
+            artists += f'{artist_id}'
 
-            result = results[0]
+    # Add to dated
+    print("Updating dated table...")
+    today = datetime.now(timezone("US/Central"))
 
-            new_time = duration + result[3]
 
-            db.update_time(result, new_time)
-            print(f"Updated time for {song} by {artist_name} from {result[3]} to {new_time}.")
+    # Check if all the listening info has its corresponding id
+    if not (song_id := db.get_id("songs", song)):
+        song_id = db.add_song(song, duration, album_id, artists, song_spotify_id)
+
+    db.insert(song_id, USER_ID, today)
+
 
 
 
@@ -135,7 +128,7 @@ def main() -> None:
         if add:
             print(f'Song detected, {currently_playing["item"]["name"]}')
 
-            add_time(currently_playing)
+            insert_song(currently_playing, USER)
 
             last_track_info["last_progress"] = currently_playing["item"]["duration_ms"]
             last_track_info["last_track_title"] = currently_playing["item"]["name"]
@@ -154,4 +147,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Make sure user exists
+    results = db.get_id("users", "jackson")
+    if not results:
+        with Opener() as (con, cur):
+            cur.execute("INSERT INTO users (name) VALUES (?)", ["jackson"])
     main()

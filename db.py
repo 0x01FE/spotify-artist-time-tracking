@@ -29,11 +29,30 @@ class Opener():
         self.con.commit()
         self.con.close()
 
-def add_id(table : Literal["artists", "albums", "songs", "playlists", "users"], name : str) -> int:
+def add_id(table : Literal["artists", "albums", "users"], name : str, spotify_id : Optional[str] = None) -> int:
     with Opener(DATABASE) as (con, cur):
-        cur.execute("INSERT INTO '{}' (name) VALUES (?)".format(table), [name])
+        if spotify_id:
+            cur.execute("INSERT INTO '{}' (name, spotify_id) VALUES (?, ?)".format(table), [name, spotify_id])
+        else:
+            cur.execute("INSERT INTO '{}' (name) VALUES (?)".format(table), [name])
 
     return cur.lastrowid
+
+
+'''
+Artist is a string with multiple id's if needed seperated by commas (ex: 1,2,3)
+
+Returns song id
+'''
+def add_song(name : str, length : int, album : int, artist : str, spotify_id : Optional[int] = None) -> int:
+    with Opener(DATABASE) as (con, cur):
+        if spotify_id:
+            cur.execute("INSERT INTO songs (name, length, album, artist, spotify_id) VALUES (?, ?, ?, ?, ?)", [name, length, album, artist, spotify_id])
+        else:
+            cur.execute("INSERT INTO songs (name, length, album, artist) VALUES (?, ?, ?, ?)", [name, length, album, artist])
+
+    return cur.lastrowid
+
 
 
 def get_id(table : Literal["artists", "albums", "songs", "playlists", "users"], name : str) -> int | None:
@@ -46,17 +65,14 @@ def get_id(table : Literal["artists", "albums", "songs", "playlists", "users"], 
     return None
 
 def insert(
-    artist : int,
-    album : int,
     song : int,
-    time : int,
     user : int,
-    date : Optional[datetime] = None
+    date : datetime
 ) -> None:
     with Opener(DATABASE) as (con, cur):
         date = date.strftime("%Y-%m-%d")
 
-        cur.execute("INSERT into dated VALUES (?, ?, ?, ?, ?, ?)", [artist, album, song, time, user, date])
+        cur.execute("INSERT INTO dated VALUES (?, ?, ?)", [song, user, date])
 
 
 
