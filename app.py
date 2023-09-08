@@ -20,7 +20,6 @@ scopes = config["SPOTIFY"]["SCOPES"]
 
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 cache_path = config["SETTINGS"]["CACHE_PATH"]
-json_path = config["SETTINGS"]["JSON_PATH"]
 DATABASE = config["SETTINGS"]["DB_PATH"]
 USER = config["SETTINGS"]["USER"]
 USER_ID = db.get_id("users", USER)
@@ -56,7 +55,7 @@ def insert_song(currently_playing : dict, user : str) -> None:
 
 
 
-    artists = ""
+
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
     song_spotify_id = currently_playing["item"]["id"]
@@ -67,6 +66,8 @@ def insert_song(currently_playing : dict, user : str) -> None:
     if not (album_id := db.get_id("albums", album)):
         album_id = db.add_id("albums", album, album_spotify_id)
 
+    new_song_id = db.get_latest_song_id() + 1
+
     for artist in currently_playing["item"]["artists"]:
         artist_name = artist["name"].replace(" ", "-").lower()
         artist_spotify_id = artist["id"]
@@ -74,23 +75,18 @@ def insert_song(currently_playing : dict, user : str) -> None:
         if not (artist_id := db.get_id("artists", artist_name)):
             artist_id = db.add_id("artists", artist_name, artist_spotify_id)
 
-        # Don't add comma on last artits
-        if artist != currently_playing["item"]["artists"][-1]:
-            artists += f'{artist_id},'
-        else:
-            artists += f'{artist_id}'
+        if not (song_id := db.get_song_id(song, artist_id)):
+            db.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)
+
 
     # Add to dated
     print("Updating dated table...")
     today = datetime.now(timezone("US/Central"))
 
-
-    # Check if all the listening info has its corresponding id
-    if not (song_id := db.get_id("songs", song)):
-        song_id = db.add_song(song, duration, album_id, artists, song_spotify_id)
-
-    db.insert(song_id, USER_ID, today)
-
+    if song_id:
+        db.insert(song_id, USER_ID, today)
+    else:
+        db.insert(new_song_id, USER_ID, today)
 
 
 
@@ -148,8 +144,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     # Make sure user exists
-    results = db.get_id("users", "jackson")
+    results = db.get_id("users", USER)
     if not results:
         with Opener() as (con, cur):
-            cur.execute("INSERT INTO users (name) VALUES (?)", ["jackson"])
+            cur.execute("INSERT INTO users (name) VALUES (?)", [USER])
+        USER_ID = db.get_id("users", USER)
     main()
