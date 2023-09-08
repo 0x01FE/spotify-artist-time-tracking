@@ -6,3 +6,5 @@ config.ini
 *.json
 data
 *.db
+*.sh
+*.yml
