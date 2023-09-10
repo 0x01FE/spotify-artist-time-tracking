@@ -1,3 +1,4 @@
+#!/usr/local/bin/python3.11
 import spotipy
 import os
 import json
