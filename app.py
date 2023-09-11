@@ -22,20 +22,14 @@ scopes = config["SPOTIFY"]["SCOPES"]
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 cache_path = config["SETTINGS"]["CACHE_PATH"]
 DATABASE = config["SETTINGS"]["DB_PATH"]
-USER = config["SETTINGS"]["USER"]
-USER_ID = db.get_id("users", USER)
+USERS = config["SETTINGS"]["USERS"].split(",")
+user_info = {} # Each entry will be a dict like this {'id' : int, 'api' : spotipy.Spotify}
 
 os.environ["SPOTIPY_CLIENT_ID"] = client_id
 os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
 os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
-with open(cache_path, "r") as f:
-    token_info = json.loads(f.read())
-
-
-cache_handler = spotipy.MemoryCacheHandler(token_info=token_info)
-spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
 
 
 
@@ -51,11 +45,9 @@ class Opener():
         self.con.close()
 
 
+
 # Write info from currently_playing to a specified file
-def insert_song(currently_playing : dict, user : str) -> None:
-
-
-
+def insert_song(currently_playing : dict, user_id : int) -> None:
 
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
@@ -85,9 +77,9 @@ def insert_song(currently_playing : dict, user : str) -> None:
     today = datetime.now(timezone("US/Central"))
 
     if song_id:
-        db.insert(song_id, USER_ID, today)
+        db.insert(song_id, user_id, today)
     else:
-        db.insert(new_song_id, USER_ID, today)
+        db.insert(new_song_id, user_id, today)
 
 
 
@@ -95,59 +87,89 @@ def main() -> None:
 
     while True:
         print("#"*20)
-        print("Looking for a playing song...")
-        try:
-            currently_playing = spotify.current_user_playing_track()
-        except ConnectionError:
-            print(f"ConnectionError, retrying in {wait_time} seconds...")
-            sleep(wait_time)
-            continue
+        for user in USERS:
+            print("-"*20)
+            print(f"User: {user} - Looking for a playing song...")
 
-        add = False
+            api = user_info[user]['api']
 
-        with open("./data/last.json", "r") as f:
-            last_track_info = json.loads(f.read())
+            try:
+                currently_playing = api.current_user_playing_track()
+            except ConnectionError:
+                print(f"Users : {user} - Connection failed")
+                continue
 
-        last_progress = last_track_info["last_progress"]
-        last_track_title = last_track_info["last_track_title"]
+            add = False
 
-        # Series of checks to see if the program should actually consider this a "listen"
-        if currently_playing:
-            if currently_playing["is_playing"]:
-                if last_progress and last_track_title:
-                    if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
-                        add = True
-                    elif currently_playing["item"]["name"] != last_track_title:
-                        add = True
-                else:
-                    add = True
+            with open("./data/last.json", "r") as f:
+                last_track_info = json.loads(f.read())
 
-        if add:
-            print(f'Song detected, {currently_playing["item"]["name"]}')
+            if user not in last_track_info:
+                add = True
+                last_track_info[user] = {}
+            else:
+                last_progress = last_track_info[user]["last_progress"]
+                last_track_title = last_track_info[user]["last_track_title"]
 
-            insert_song(currently_playing, USER)
+                # Series of checks to see if the program should actually consider this a "listen"
+                if currently_playing:
+                    if currently_playing["is_playing"]:
+                        if last_progress and last_track_title:
+                            if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
+                                add = True
+                            elif currently_playing["item"]["name"] != last_track_title:
+                                add = True
+                        else:
+                            add = True
 
-            last_track_info["last_progress"] = currently_playing["item"]["duration_ms"]
-            last_track_info["last_track_title"] = currently_playing["item"]["name"]
+            if add:
+                print(f'User: {user} - Song detected, {currently_playing["item"]["name"]}')
 
-            with open("./data/last.json", "w") as f:
-                f.write(json.dumps(last_track_info, indent=4))
+                insert_song(currently_playing, user_info[user]['id'])
 
-        else:
-            print("Listening check not passed.")
+                last_track_info[user]["last_progress"] = currently_playing["item"]["duration_ms"]
+                last_track_info[user]["last_track_title"] = currently_playing["item"]["name"]
+
+                with open("./data/last.json", "w") as f:
+                    f.write(json.dumps(last_track_info, indent=4))
+
+            else:
+                print(f"User: {user} - Listening check not passed.")
+
 
         # Wait before checking again to avoid being rate limited or using my API quota
-        print(f"Wating {wait_time} seconds...")
         print("#"*20 + "\n")
+        print(f"Wating {wait_time} seconds...")
         sleep(wait_time)
 
 
 
 if __name__ == "__main__":
-    # Make sure user exists
-    results = db.get_id("users", USER)
-    if not results:
-        with Opener() as (con, cur):
-            cur.execute("INSERT INTO users (name) VALUES (?)", [USER])
-        USER_ID = db.get_id("users", USER)
+
+    # Make sure the database in the config.ini exists.
+    if not os.path.exists(DATABASE):
+        db.create_db()
+
+    # Make sure users exists
+    for user in USERS:
+        user_info[user] = {}
+        results = db.get_id("users", user)
+        if not results:
+            with Opener() as (con, cur):
+                cur.execute("INSERT INTO users (name) VALUES (?)", [user])
+            user_id = db.get_id("users", user)
+            user_info[user]['id'] = user_id
+        else:
+            user_info[user]['id'] = results
+
+
+    # Get a Spotify Object for each user
+    for user in USERS:
+        with open(f"./data/.cache-{user_info[user]['id']}", 'r') as f:
+            cache_data = json.loads(f.read())
+
+        cache_handler = spotipy.MemoryCacheHandler(token_info=cache_data)
+        user_api = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
+        user_info[user]['api'] = user_api
+
     main()
