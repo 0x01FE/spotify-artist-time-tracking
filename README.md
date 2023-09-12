@@ -5,17 +5,20 @@ This is a script I wrote to track the amount of time I've listened to various ar
 # Config File Format
 This program uses a config.ini file for some basic variables. This is an example of how I have mine set up.
 
-
+```ini
 \[SPOTIFY\]
-client_id : your_apps_id  
-client_secret : your_apps_secret  
-redirect_uri : your_apps_redirect  
-scopes : user-read-playback-state user-read-currently-playing user-top-read user-read-recently-played user-read-playback-position
+client_id = your_apps_id  
+client_secret = your_apps_secret  
+redirect_uri = your_apps_redirect  
+scopes = user-read-playback-state user-read-currently-playing user-top-read user-read-recently-played user-read-playback-position
 
 \[SETTINGS\]
-wait_time : 90  
+wait_time = 90  
 db_path = ./data/foo.db  
 users = bar,xar,tar
+```
+
+
 
 # Setup
 
