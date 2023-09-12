@@ -20,7 +20,6 @@ redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
 scopes = config["SPOTIFY"]["SCOPES"]
 
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
-cache_path = config["SETTINGS"]["CACHE_PATH"]
 DATABASE = config["SETTINGS"]["DB_PATH"]
 USERS = config["SETTINGS"]["USERS"].split(",")
 user_info = {} # Each entry will be a dict like this {'id' : int, 'api' : spotipy.Spotify}

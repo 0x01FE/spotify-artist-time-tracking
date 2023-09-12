@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  spotify-tracking:
+    image: "spotify-tracking:v2"
+    container_name: "spotify-tracking"
+    volumes:
+      - volume/mount/path:/data
+    restart: "unless-stopped"
