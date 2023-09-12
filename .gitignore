@@ -5,3 +5,6 @@ config.ini
 .cache
 *.json
 data
+*.db
+*.sh
+*.yml
