@@ -1,18 +1,22 @@
 #!/usr/local/bin/python3.11
-import spotipy
+
 import os
 import json
-import sqlite3 as sql
-from time import sleep
-from configparser import ConfigParser
+import sqlite3
+import time
+import configparser
+import datetime
+import pytz
+
+import spotipy
+
 from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import ConnectionError
-from datetime import datetime
-from pytz import timezone
-import db
+
+import .db
 
 
-config = ConfigParser()
+config = configparser.ConfigParser()
 config.read("config.ini")
 client_id = config["SPOTIFY"]["CLIENT_ID"]
 client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
@@ -73,7 +77,7 @@ def insert_song(currently_playing : dict, user_id : int) -> None:
 
     # Add to dated
     print("Updating dated table...")
-    today = datetime.now(timezone("US/Central"))
+    today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
         db.insert(song_id, user_id, today)
@@ -139,7 +143,7 @@ def main() -> None:
         # Wait before checking again to avoid being rate limited or using my API quota
         print("#"*20 + "\n")
         print(f"Wating {wait_time} seconds...")
-        sleep(wait_time)
+        time.sleep(wait_time)
 
 
 
