@@ -1,8 +1,10 @@
 #!/usr/local/bin/python3.11
-import sqlite3 as sql
-from datetime import datetime
+
 from typing import Literal, Optional
-from configparser import ConfigParser
+import sqlite3
+import datetime
+import configparser
+
 
 
 '''
@@ -13,14 +15,14 @@ I'll rewrite it using SQLAlchemy I swear
 
 # Note that SQLite can only work with dates in the YYYY-MM-DD format.
 
-config = ConfigParser()
+config = configparser.ConfigParser()
 config.read("config.ini")
 DATABASE = config["SETTINGS"]["DB_PATH"]
 
 
 class Opener():
     def __init__(self, database):
-        self.con = sql.connect(database)
+        self.con = sqlite3.connect(database)
 
     def __enter__(self):
         return self.con, self.con.cursor()
@@ -91,7 +93,7 @@ def get_song_id(song : str, artist_id : int) -> int | None:
 def insert(
     song : int,
     user : int,
-    date : datetime
+    date : datetime.datetime
 ) -> None:
     with Opener(DATABASE) as (con, cur):
         date = date.strftime("%Y-%m-%d")
