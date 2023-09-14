@@ -13,7 +13,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import ConnectionError
 
-import .db
+import db
 
 
 config = configparser.ConfigParser()
