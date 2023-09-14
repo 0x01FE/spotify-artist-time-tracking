@@ -38,7 +38,7 @@ os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 class Opener():
     def __init__(self):
-        self.con = sql.connect(DATABASE)
+        self.con = sqlite3.connect(DATABASE)
 
     def __enter__(self):
         return self.con, self.con.cursor()
