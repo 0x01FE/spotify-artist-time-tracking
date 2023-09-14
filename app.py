@@ -25,8 +25,7 @@ scopes = config["SPOTIFY"]["SCOPES"]
 
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 DATABASE = config["SETTINGS"]["DB_PATH"]
-USERS = config["SETTINGS"]["USERS"].split(",")
-user_info = {} # Each entry will be a dict like this {'id' : int, 'api' : spotipy.Spotify}
+users = []
 
 os.environ["SPOTIPY_CLIENT_ID"] = client_id
 os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
@@ -34,6 +33,37 @@ os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
 
+
+
+class User():
+
+    id : int
+    name : str
+    api : spotipy.Spotify
+
+    def __init__(self, name : str):
+        self.name = name
+
+        # Get Id or create Id
+        results = db.get_id("users", self.name)
+
+        if not results:
+            with Opener() as (con, cur):
+                cur.execute("INSERT INTO users (name) VALUES (?)", [self.name])
+
+            self.id = db.get_id("users", self.name)
+        else:
+            self.id = results
+
+        # Setup API connection
+        with open(f"./data/.cache-{self.id}", 'r') as f:
+            cache_data = json.loads(f.read())
+
+        cache_handler = spotipy.MemoryCacheHandler(token_info=cache_data)
+        self.api = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class Opener():
@@ -90,14 +120,13 @@ def main() -> None:
 
     while True:
         print("#"*20)
-        for user in USERS:
+        for user in users:
             print("-"*20)
             print(f"User: {user} - Looking for a playing song...")
 
-            api = user_info[user]['api']
 
             try:
-                currently_playing = api.current_user_playing_track()
+                currently_playing = user.api.current_user_playing_track()
             except ConnectionError:
                 print(f"Users : {user} - Connection failed")
                 continue
@@ -128,7 +157,7 @@ def main() -> None:
             if add:
                 print(f'User: {user} - Song detected, {currently_playing["item"]["name"]}')
 
-                insert_song(currently_playing, user_info[user]['id'])
+                insert_song(currently_playing, user.id)
 
                 last_track_info[user]["last_progress"] = currently_playing["item"]["duration_ms"]
                 last_track_info[user]["last_track_title"] = currently_playing["item"]["name"]
@@ -153,26 +182,9 @@ if __name__ == "__main__":
     if not os.path.exists(DATABASE):
         db.create_db()
 
-    # Make sure users exists
-    for user in USERS:
-        user_info[user] = {}
-        results = db.get_id("users", user)
-        if not results:
-            with Opener() as (con, cur):
-                cur.execute("INSERT INTO users (name) VALUES (?)", [user])
-            user_id = db.get_id("users", user)
-            user_info[user]['id'] = user_id
-        else:
-            user_info[user]['id'] = results
-
-
-    # Get a Spotify Object for each user
-    for user in USERS:
-        with open(f"./data/.cache-{user_info[user]['id']}", 'r') as f:
-            cache_data = json.loads(f.read())
-
-        cache_handler = spotipy.MemoryCacheHandler(token_info=cache_data)
-        user_api = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
-        user_info[user]['api'] = user_api
+    users = []
+    # Setup all users
+    for user in config["SETTINGS"]["USERS"].split(","):
+        users.append(User(name=user))
 
     main()
