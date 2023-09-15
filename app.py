@@ -2,15 +2,12 @@
 
 import os
 import json
-import sqlite3
 import time
 import configparser
 import datetime
 import pytz
 
-import spotipy
 
-from spotipy.oauth2 import SpotifyOAuth
 from requests.exceptions import ConnectionError
 
 import db
@@ -21,7 +18,7 @@ config.read("config.ini")
 client_id = config["SPOTIFY"]["CLIENT_ID"]
 client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
 redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
-scopes = config["SPOTIFY"]["SCOPES"]
+
 
 wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
 DATABASE = config["SETTINGS"]["DB_PATH"]
@@ -35,52 +32,8 @@ os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
 
-class User():
-
-    id : int
-    name : str
-    api : spotipy.Spotify
-
-    def __init__(self, name : str):
-        self.name = name
-
-        # Get Id or create Id
-        results = db.get_id("users", self.name)
-
-        if not results:
-            with Opener() as (con, cur):
-                cur.execute("INSERT INTO users (name) VALUES (?)", [self.name])
-
-            self.id = db.get_id("users", self.name)
-        else:
-            self.id = results
-
-        # Setup API connection
-        with open(f"./data/.cache-{self.id}", 'r') as f:
-            cache_data = json.loads(f.read())
-
-        cache_handler = spotipy.MemoryCacheHandler(token_info=cache_data)
-        self.api = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scopes, cache_handler=cache_handler))
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class Opener():
-    def __init__(self):
-        self.con = sqlite3.connect(DATABASE)
-
-    def __enter__(self):
-        return self.con, self.con.cursor()
-
-    def __exit__(self, type, value, traceback):
-        self.con.commit()
-        self.con.close()
-
-
-
 # Write info from currently_playing to a specified file
-def insert_song(currently_playing : dict, user_id : int) -> None:
+def insert_song(user : db.User, currently_playing : dict) -> None:
 
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
@@ -89,20 +42,20 @@ def insert_song(currently_playing : dict, user_id : int) -> None:
 
     album = currently_playing["item"]["album"]["name"]
     album_spotify_id = currently_playing["item"]["album"]["id"]
-    if not (album_id := db.get_id("albums", album)):
-        album_id = db.add_id("albums", album, album_spotify_id)
+    if not (album_id := user.get_id("albums", album)):
+        album_id = user.add_id("albums", album, album_spotify_id)
 
-    new_song_id = db.get_latest_song_id() + 1
+    new_song_id = user.get_latest_song_id() + 1
 
     for artist in currently_playing["item"]["artists"]:
         artist_name = artist["name"].replace(" ", "-").lower()
         artist_spotify_id = artist["id"]
 
-        if not (artist_id := db.get_id("artists", artist_name)):
-            artist_id = db.add_id("artists", artist_name, artist_spotify_id)
+        if not (artist_id := user.get_id("artists", artist_name)):
+            artist_id = user.add_id("artists", artist_name, artist_spotify_id)
 
-        if not (song_id := db.get_song_id(song, artist_id)):
-            db.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)
+        if not (song_id := user.get_song_id(song, artist_id)):
+            user.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)
 
 
     # Add to dated
@@ -110,9 +63,9 @@ def insert_song(currently_playing : dict, user_id : int) -> None:
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
-        db.insert(song_id, user_id, today)
+        user.insert(song_id, today)
     else:
-        db.insert(new_song_id, user_id, today)
+        user.insert(new_song_id, today)
 
 
 
@@ -185,6 +138,6 @@ if __name__ == "__main__":
     users = []
     # Setup all users
     for user in config["SETTINGS"]["USERS"].split(","):
-        users.append(User(name=user))
+        users.append(db.User(name=user))
 
     main()
