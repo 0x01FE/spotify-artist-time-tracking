@@ -93,7 +93,7 @@ class User():
     Returns:
         id (int) : latest id added
     """
-    def get_latest_song_id() -> int:
+    def get_latest_song_id(self) -> int:
         with Opener(DATABASE) as (con, cur):
             cur.execute("SELECT * FROM songs ORDER BY id DESC LIMIT 1")
 
@@ -116,7 +116,7 @@ class User():
     Returns:
         id (int) : Id of the added item
     """
-    def add_id(table : Literal["artists", "albums", "users"], name : str, spotify_id : str | None = None) -> int:
+    def add_id(self, table : Literal["artists", "albums", "users"], name : str, spotify_id : str | None = None) -> int:
         with Opener(DATABASE) as (con, cur):
             if spotify_id:
                 cur.execute("INSERT INTO '{}' (name, spotify_id) VALUES (?, ?)".format(table), [name, spotify_id])
@@ -139,7 +139,7 @@ class User():
     Returns:
         id (int) : id of the song added
     """
-    def add_song(id : int, name : str, length : int, album : int, artist : int, spotify_id : str | None = None) -> int:
+    def add_song(self, id : int, name : str, length : int, album : int, artist : int, spotify_id : str | None = None) -> int:
         with Opener(DATABASE) as (con, cur):
             if spotify_id:
                 cur.execute("INSERT INTO songs (id, name, length, album, artist, spotify_id) VALUES (?, ?, ?, ?, ?, ?)", [id, name, length, album, artist, spotify_id])
@@ -159,7 +159,7 @@ class User():
     Returns:
         id (int | None) : Id if found, otherwise None.
     """
-    def get_id(table : Literal["artists", "albums", "songs", "users"], name : str) -> int | None:
+    def get_id(self, table : Literal["artists", "albums", "songs", "users"], name : str) -> int | None:
         with Opener(DATABASE) as (con, cur):
             cur.execute("SELECT * FROM '{}' WHERE name = ?".format(table), [name])
             results = cur.fetchall()

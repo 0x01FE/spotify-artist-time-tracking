@@ -20,7 +20,8 @@ client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
 redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
 
 
-wait_time = int(config["SETTINGS"]["WAIT_TIME"]) # in seconds
+default_wait_time = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
+active_wait_time = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
 
@@ -73,6 +74,7 @@ def main() -> None:
 
     while True:
         print("#"*20)
+        wait_time = default_wait_time
         for user in users:
             print("-"*20)
             print(f"User: {user} - Looking for a playing song...")
@@ -95,17 +97,27 @@ def main() -> None:
             else:
                 last_progress = last_track_info[user]["last_progress"]
                 last_track_title = last_track_info[user]["last_track_title"]
+                double_check = last_track_info[user]["double_check"]
+
+                current_progress = currently_playing["progress_ms"]
+                current_track_title = currently_playing["item"]["name"]
+                duration = currently_playing["item"]["duration"]
 
                 # Series of checks to see if the program should actually consider this a "listen"
                 if currently_playing:
                     if currently_playing["is_playing"]:
-                        if last_progress and last_track_title:
-                            if (last_progress < currently_playing["progress_ms"]) and (currently_playing["item"]["name"] == last_track_title):
-                                add = True
-                            elif currently_playing["item"]["name"] != last_track_title:
-                                add = True
-                        else:
+                        # The program gives three seconds of spare because the API call might take some time
+                        if double_check and last_track_title == current_track_title and current_progress >= (duration * 0.6) - 3000:
                             add = True
+                            double_check = False
+
+                        elif last_track_title != current_track_title:
+                            double_check = True
+                            wait_time = duration * 0.6
+                    else:
+                        wait_time = active_wait_time
+                else:
+                        wait_time = default_wait_time
 
             if add:
                 print(f'User: {user} - Song detected, {currently_playing["item"]["name"]}')
