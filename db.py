@@ -54,7 +54,7 @@ class User():
         results = self.get_id("users", self.name)
 
         if not results:
-            with Opener() as (con, cur):
+            with Opener(DATABASE) as (con, cur):
                 cur.execute("INSERT INTO users (name) VALUES (?)", [self.name])
 
             self.id = self.get_id("users", self.name)

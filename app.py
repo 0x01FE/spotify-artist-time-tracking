@@ -79,7 +79,6 @@ def main() -> None:
             print("-"*20)
             print(f"User: {user} - Looking for a playing song...")
 
-
             try:
                 currently_playing = user.api.current_user_playing_track()
             except ConnectionError:
@@ -91,41 +90,51 @@ def main() -> None:
             with open("./data/last.json", "r") as f:
                 last_track_info = json.loads(f.read())
 
-            if user not in last_track_info:
+            if user.name not in last_track_info:
                 add = True
-                last_track_info[user] = {}
+                last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
             else:
-                last_progress = last_track_info[user]["last_progress"]
-                last_track_title = last_track_info[user]["last_track_title"]
-                double_check = last_track_info[user]["double_check"]
-
-                current_progress = currently_playing["progress_ms"]
-                current_track_title = currently_playing["item"]["name"]
-                duration = currently_playing["item"]["duration"]
+                last_progress = last_track_info[user.name]["last_progress"]
+                last_track_title = last_track_info[user.name]["last_track_title"]
+                double_check = last_track_info[user.name]["double_check"]
 
                 # Series of checks to see if the program should actually consider this a "listen"
                 if currently_playing:
                     if currently_playing["is_playing"]:
+
+                        current_progress = currently_playing["progress_ms"]
+                        current_track_title = currently_playing["item"]["name"]
+                        duration = currently_playing["item"]["duration_ms"]
+
                         # The program gives three seconds of spare because the API call might take some time
-                        if double_check and last_track_title == current_track_title and current_progress >= (duration * 0.6) - 3000:
+                        if double_check and last_track_title == current_track_title and current_progress >= round(duration * 0.6) - 3000:
                             add = True
                             double_check = False
 
                         elif last_track_title != current_track_title:
-                            double_check = True
-                            wait_time = duration * 0.6
+
+                            wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
+
+                            if wait_time <= 3:
+                                double_check = False
+                                add = True
+                            else:
+                                double_check = True
+                                print(f"Playing track {current_track_title} does not meet time requirment to be recorded.")
+                                print(f"Checking again in {wait_time} seconds...")
                     else:
-                        wait_time = active_wait_time
-                else:
-                        wait_time = default_wait_time
+                        if active_wait_time < wait_time:
+                            wait_time = active_wait_time
 
             if add:
                 print(f'User: {user} - Song detected, {currently_playing["item"]["name"]}')
 
                 insert_song(currently_playing, user.id)
 
-                last_track_info[user]["last_progress"] = currently_playing["item"]["duration_ms"]
-                last_track_info[user]["last_track_title"] = currently_playing["item"]["name"]
+            if double_check or add:
+                last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
+                last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
+                last_track_info[user.name]["double_check"] = double_check
 
                 with open("./data/last.json", "w") as f:
                     f.write(json.dumps(last_track_info, indent=4))
@@ -136,7 +145,7 @@ def main() -> None:
 
         # Wait before checking again to avoid being rate limited or using my API quota
         print("#"*20 + "\n")
-        print(f"Wating {wait_time} seconds...")
+        print(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)
 
 
