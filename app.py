@@ -22,6 +22,7 @@ redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
 
 default_wait_time = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
 active_wait_time = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
+PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
 
@@ -72,6 +73,11 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
 def main() -> None:
 
+    """
+    TODO @0x01FE
+
+    Pretty sure this needs to be rewritten with asyncio
+    """
     while True:
         print("#"*20)
         wait_time = default_wait_time
@@ -102,16 +108,20 @@ def main() -> None:
                 if currently_playing:
                     if currently_playing["is_playing"]:
 
+                        wait_time = active_wait_time
+
                         current_progress = currently_playing["progress_ms"]
                         current_track_title = currently_playing["item"]["name"]
                         duration = currently_playing["item"]["duration_ms"]
 
                         # The program gives three seconds of spare because the API call might take some time
-                        if double_check and last_track_title == current_track_title and current_progress >= round(duration * 0.6) - 3000:
+                        threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                        if double_check and last_track_title == current_track_title and current_progress >= threshold:
+                            print(f"User: {user} - Double check passed.")
                             add = True
                             double_check = False
 
-                        elif last_track_title != current_track_title:
+                        elif last_track_title != current_track_title and current_progress < threshold:
 
                             wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
 
@@ -120,16 +130,14 @@ def main() -> None:
                                 add = True
                             else:
                                 double_check = True
-                                print(f"Playing track {current_track_title} does not meet time requirment to be recorded.")
+                                print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
                                 print(f"Checking again in {wait_time} seconds...")
-                    else:
-                        if active_wait_time < wait_time:
-                            wait_time = active_wait_time
+
 
             if add:
-                print(f'User: {user} - Song detected, {currently_playing["item"]["name"]}')
+                print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
 
-                insert_song(currently_playing, user.id)
+                insert_song(user, currently_playing)
 
             if double_check or add:
                 last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]

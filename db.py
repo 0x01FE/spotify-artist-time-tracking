@@ -150,7 +150,7 @@ class User():
 
 
     """
-    Get the id of some artist, album, song, or user.
+    Get the id of some artist, album, or user.
 
     Parameters:
         table (str) : Name of the table the item is in
@@ -159,9 +159,29 @@ class User():
     Returns:
         id (int | None) : Id if found, otherwise None.
     """
-    def get_id(self, table : Literal["artists", "albums", "songs", "users"], name : str) -> int | None:
+    def get_id(self, table : Literal["artists", "albums", "users"], name : str) -> int | None:
         with Opener(DATABASE) as (con, cur):
             cur.execute("SELECT * FROM '{}' WHERE name = ?".format(table), [name])
+            results = cur.fetchall()
+
+        if results:
+            return results[0][0]
+        return None
+
+
+    """
+    Get the id of a song by name and artist id.
+
+    Paramters:
+        song_name (str) : Name of the song
+        artist_id (int) : Id of the artist
+
+    returns:
+        id (int | None) : Id if found, otherwise None.
+    """
+    def get_song_id(self, song_name : str, artist_id : int) -> int | None:
+        with Opener(DATABASE) as (con, cur):
+            cur.execute("SELECT * FROM songs WHERE name = ? AND artist = ?", [song_name, artist_id])
             results = cur.fetchall()
 
         if results:
