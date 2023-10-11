@@ -90,6 +90,7 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 def check_user(user : db.User) -> None:
     print(f"User : {user} - Process started.")
     while True:
+        is_playing = False
         wait_time = default_wait_time
         print(f"User : {user} - Looking for a playing song...")
 
@@ -115,7 +116,7 @@ def check_user(user : db.User) -> None:
             # Series of checks to see if the program should actually consider this a "listen"
             if currently_playing:
                 if currently_playing["is_playing"]:
-
+                    is_playing = True
                     wait_time = active_wait_time
 
                     current_progress = currently_playing["progress_ms"]
@@ -154,7 +155,7 @@ def check_user(user : db.User) -> None:
 
             insert_song(user, currently_playing)
 
-        if (double_check and currently_playing) or add or currently_playing:
+        if (double_check and currently_playing) or add or is_playing:
             last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
             last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
             last_track_info[user.name]["double_check"] = double_check
@@ -166,7 +167,7 @@ def check_user(user : db.User) -> None:
             print(f"User : {user} - Listening check not passed.")
 
         # Never let the wait time go over the max active wait time
-        if wait_time > MAX_ACTIVE_WAIT_TIME and currently_playing:
+        if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
             print(f"User : {user} - Wait time was over max active wait time. Overriding to max wait time.")
             wait_time = MAX_ACTIVE_WAIT_TIME
 
