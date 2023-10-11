@@ -61,7 +61,7 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
 
     # Add to dated
-    print("Updating dated table...")
+    print(f"User : {user} - Adding entry for song {song}.")
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
@@ -70,16 +70,15 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
         user.insert(new_song_id, today)
 
 def check_user(user : db.User) -> None:
+    print(f"User : {user} - Process started.")
     while True:
-        print(f"In {user} thread.")
-        print("#"*20)
         wait_time = default_wait_time
-        print(f"User: {user} - Looking for a playing song...")
+        print(f"User : {user} - Looking for a playing song...")
 
         try:
             currently_playing = user.api.current_user_playing_track()
         except ConnectionError:
-            print(f"Users : {user} - Connection failed")
+            print(f"User : {user} - Connection failed!")
             continue
 
         add = False
@@ -105,6 +104,8 @@ def check_user(user : db.User) -> None:
                     current_track_title = currently_playing["item"]["name"]
                     duration = currently_playing["item"]["duration_ms"]
 
+                    print(f"User : {user} - Track found playing \"{current_track_title}\".")
+
                     # The program gives three seconds of spare because the API call might take some time
                     threshold = round(duration * PROGRESS_THRESHOLD) - 3000
                     if double_check and last_track_title == current_track_title and current_progress >= threshold:
@@ -121,17 +122,17 @@ def check_user(user : db.User) -> None:
                             add = True
                         else:
                             double_check = True
-                            print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
-                            print(f"Checking again in {wait_time} seconds...")
+                            print(f"User : {user} - Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
+                            print(f"User : {user} - Checking again in {wait_time} seconds...")
                 else:
                     double_check = False
 
         if add:
-            print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
+            print(f'User : {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
 
             insert_song(user, currently_playing)
 
-        if (double_check and currently_playing) or add:
+        if (double_check and currently_playing) or add or currently_playing:
             last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
             last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
             last_track_info[user.name]["double_check"] = double_check
@@ -140,12 +141,11 @@ def check_user(user : db.User) -> None:
                 f.write(json.dumps(last_track_info, indent=4))
 
         else:
-            print(f"User: {user} - Listening check not passed.")
+            print(f"User : {user} - Listening check not passed.")
 
 
         # Wait before checking again to avoid being rate limited or using my API quota
-        print("#"*20 + "\n")
-        print(f"Waiting {wait_time} seconds...")
+        print(f"User : {user} - Waiting {wait_time} seconds...")
         time.sleep(wait_time)
 
 def main() -> None:
