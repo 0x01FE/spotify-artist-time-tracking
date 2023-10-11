@@ -132,14 +132,15 @@ def main() -> None:
                                 double_check = True
                                 print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
                                 print(f"Checking again in {wait_time} seconds...")
-
+                    else:
+                        double_check = False
 
             if add:
                 print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
 
                 insert_song(user, currently_playing)
 
-            if double_check or add:
+            if (double_check and currently_playing) or add:
                 last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
                 last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
                 last_track_info[user.name]["double_check"] = double_check
