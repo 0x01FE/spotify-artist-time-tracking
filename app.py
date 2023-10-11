@@ -22,6 +22,7 @@ redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
 
 default_wait_time = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
 active_wait_time = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
+MAX_ACTIVE_WAIT_TIME = int(config["SETTINGS"]["MAX_ACTIVE_WAIT_TIME"])
 PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
@@ -125,14 +126,18 @@ def check_user(user : db.User) -> None:
 
                     # The program gives three seconds of spare because the API call might take some time
                     threshold = round(duration * PROGRESS_THRESHOLD) - 3000
-                    if double_check and last_track_title == current_track_title and current_progress >= threshold:
-                        print(f"User : {user} - Double check passed.")
-                        add = True
-                        double_check = False
+                    if double_check and last_track_title == current_track_title:
+                        if current_progress >= threshold:
+                            print(f"User : {user} - Double check passed.")
+                            add = True
+                            double_check = False
+                        else:
+                            print(f"User : {user} - Double check not passed yet.")
+                            wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
                     elif last_track_title != current_track_title and current_progress < threshold:
 
-                        wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
+                        wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
                         if wait_time <= 3:
                             double_check = False
@@ -160,6 +165,10 @@ def check_user(user : db.User) -> None:
         else:
             print(f"User : {user} - Listening check not passed.")
 
+        # Never let the wait time go over the max active wait time
+        if wait_time > MAX_ACTIVE_WAIT_TIME and currently_playing:
+            print(f"User : {user} - Wait time was over max active wait time. Overriding to max wait time.")
+            wait_time = MAX_ACTIVE_WAIT_TIME
 
         # Wait before checking again to avoid being rate limited or using my API quota
         print(f"User : {user} - Waiting {wait_time} seconds...")

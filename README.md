@@ -15,6 +15,7 @@ scopes = user-read-playback-state user-read-currently-playing user-top-read user
 [SETTINGS]
 default_wait_time = 180
 active_wait_time = 45
+max_active_wait_time = 90
 progress_threshold = 0.75
 db_path = ./data/foo.db
 users = bar,xar,tar
@@ -29,6 +30,8 @@ The program will start and then create a process for each user in the configurat
 If the user is listening to something but does not meet the __progress\_threshold__ (0.75 being 75% of the way through the song), then it will check the users progress again in x seconds when the user should meet the threshold.
 
 If the program has already added the song the user is listening to it will wait __active\_wait\_time__ seconds before checking again.
+
+__max\_active\_wait\_time__ is the max amount of time in seconds that the program will wait at a time to see if a user is at the threshold to record the track.
 
 
 # Setup
