@@ -109,7 +109,7 @@ def check_user(user : db.User) -> None:
                     # The program gives three seconds of spare because the API call might take some time
                     threshold = round(duration * PROGRESS_THRESHOLD) - 3000
                     if double_check and last_track_title == current_track_title and current_progress >= threshold:
-                        print(f"User: {user} - Double check passed.")
+                        print(f"User : {user} - Double check passed.")
                         add = True
                         double_check = False
 
