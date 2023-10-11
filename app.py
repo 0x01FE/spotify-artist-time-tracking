@@ -6,7 +6,7 @@ import time
 import configparser
 import datetime
 import pytz
-
+import multiprocessing
 
 from requests.exceptions import ConnectionError
 
@@ -69,87 +69,78 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
     else:
         user.insert(new_song_id, today)
 
-
-
-def main() -> None:
-
-    """
-    TODO @0x01FE
-
-    Pretty sure this needs to be rewritten with asyncio
-    """
+def check_user(user : db.User) -> None:
     while True:
+        print(f"In {user} thread.")
         print("#"*20)
         wait_time = default_wait_time
-        for user in users:
-            print("-"*20)
-            print(f"User: {user} - Looking for a playing song...")
+        print(f"User: {user} - Looking for a playing song...")
 
-            try:
-                currently_playing = user.api.current_user_playing_track()
-            except ConnectionError:
-                print(f"Users : {user} - Connection failed")
-                continue
+        try:
+            currently_playing = user.api.current_user_playing_track()
+        except ConnectionError:
+            print(f"Users : {user} - Connection failed")
+            continue
 
-            add = False
+        add = False
 
-            with open("./data/last.json", "r") as f:
-                last_track_info = json.loads(f.read())
+        with open("./data/last.json", "r") as f:
+            last_track_info = json.loads(f.read())
 
-            if user.name not in last_track_info:
-                add = True
-                last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
-            else:
-                last_progress = last_track_info[user.name]["last_progress"]
-                last_track_title = last_track_info[user.name]["last_track_title"]
-                double_check = last_track_info[user.name]["double_check"]
+        if user.name not in last_track_info:
+            add = True
+            last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+        else:
+            last_progress = last_track_info[user.name]["last_progress"]
+            last_track_title = last_track_info[user.name]["last_track_title"]
+            double_check = last_track_info[user.name]["double_check"]
 
-                # Series of checks to see if the program should actually consider this a "listen"
-                if currently_playing:
-                    if currently_playing["is_playing"]:
+            # Series of checks to see if the program should actually consider this a "listen"
+            if currently_playing:
+                if currently_playing["is_playing"]:
 
-                        wait_time = active_wait_time
+                    wait_time = active_wait_time
 
-                        current_progress = currently_playing["progress_ms"]
-                        current_track_title = currently_playing["item"]["name"]
-                        duration = currently_playing["item"]["duration_ms"]
+                    current_progress = currently_playing["progress_ms"]
+                    current_track_title = currently_playing["item"]["name"]
+                    duration = currently_playing["item"]["duration_ms"]
 
-                        # The program gives three seconds of spare because the API call might take some time
-                        threshold = round(duration * PROGRESS_THRESHOLD) - 3000
-                        if double_check and last_track_title == current_track_title and current_progress >= threshold:
-                            print(f"User: {user} - Double check passed.")
-                            add = True
-                            double_check = False
-
-                        elif last_track_title != current_track_title and current_progress < threshold:
-
-                            wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
-
-                            if wait_time <= 3:
-                                double_check = False
-                                add = True
-                            else:
-                                double_check = True
-                                print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
-                                print(f"Checking again in {wait_time} seconds...")
-                    else:
+                    # The program gives three seconds of spare because the API call might take some time
+                    threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                    if double_check and last_track_title == current_track_title and current_progress >= threshold:
+                        print(f"User: {user} - Double check passed.")
+                        add = True
                         double_check = False
 
-            if add:
-                print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
+                    elif last_track_title != current_track_title and current_progress < threshold:
 
-                insert_song(user, currently_playing)
+                        wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
 
-            if (double_check and currently_playing) or add:
-                last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
-                last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
-                last_track_info[user.name]["double_check"] = double_check
+                        if wait_time <= 3:
+                            double_check = False
+                            add = True
+                        else:
+                            double_check = True
+                            print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
+                            print(f"Checking again in {wait_time} seconds...")
+                else:
+                    double_check = False
 
-                with open("./data/last.json", "w") as f:
-                    f.write(json.dumps(last_track_info, indent=4))
+        if add:
+            print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
 
-            else:
-                print(f"User: {user} - Listening check not passed.")
+            insert_song(user, currently_playing)
+
+        if (double_check and currently_playing) or add:
+            last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
+            last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
+            last_track_info[user.name]["double_check"] = double_check
+
+            with open("./data/last.json", "w") as f:
+                f.write(json.dumps(last_track_info, indent=4))
+
+        else:
+            print(f"User: {user} - Listening check not passed.")
 
 
         # Wait before checking again to avoid being rate limited or using my API quota
@@ -157,7 +148,11 @@ def main() -> None:
         print(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)
 
-
+def main() -> None:
+    for user in users:
+        print(f"Starting user check process for user {user}...")
+        process = multiprocessing.Process(target=check_user, args=(user,))
+        process.start()
 
 if __name__ == "__main__":
 
