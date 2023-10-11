@@ -31,8 +31,25 @@ os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
 os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 
 
+# Check last.json to make sure it has the needed structure.
+def check_last_json() -> None:
+    if not os.path.exists("./data/last.json"):
+        with open("./data/last.json", "w+") as f:
+            pass
 
+    with open("./data/last.json", "r") as f:
+        last_track_info = json.loads(f.read())
 
+    for user in users:
+        if user.name not in last_track_info:
+            last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+        else:
+            for key in ['last_progress', 'last_track_title', 'double_check']:
+                if key not in last_track_info[user.name]:
+                    last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+
+    with open("./data/last.json", "w") as f:
+        f.write(json.dumps(last_track_info, indent=4))
 
 # Write info from currently_playing to a specified file
 def insert_song(user : db.User, currently_playing : dict) -> None:
@@ -61,7 +78,7 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
 
     # Add to dated
-    print(f"User : {user} - Adding entry for song {song}.")
+    print(f"User : {user} - Adding entry for song \"{song}\".")
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
@@ -164,5 +181,9 @@ if __name__ == "__main__":
     # Setup all users
     for user in config["SETTINGS"]["USERS"].split(","):
         users.append(db.User(name=user))
+
+    # Check that a valid last.json exists
+    check_last_json()
+
 
     main()
