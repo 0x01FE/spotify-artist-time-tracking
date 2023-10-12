@@ -1,17 +1,27 @@
 #!/usr/local/bin/python3.11
 
 import os
+import sys
 import json
 import time
 import configparser
 import datetime
 import pytz
 import multiprocessing
+import logging
 
 from requests.exceptions import ConnectionError
 
 import db
 
+# Logging
+
+FORMAT = "%(asctime)s - Thread : %(processName)s %(levelname)s - %(message)s"
+logging.basicConfig(filename="./data/log.log", encoding="utf-8", level=logging.INFO, format=FORMAT)
+logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+
+
+# Setup
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -35,6 +45,7 @@ os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
 # Check last.json to make sure it has the needed structure.
 def check_last_json() -> None:
     if not os.path.exists("./data/last.json"):
+        logging.warn("No last.json file found!")
         with open("./data/last.json", "w+") as f:
             pass
 
@@ -43,10 +54,12 @@ def check_last_json() -> None:
 
     for user in users:
         if user.name not in last_track_info:
+            logging.warn(f"Invalid JSON data for user {user}!")
             last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
         else:
             for key in ['last_progress', 'last_track_title', 'double_check']:
                 if key not in last_track_info[user.name]:
+                    logging.warn(f"Invalid keys for user {user}!")
                     last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
 
     with open("./data/last.json", "w") as f:
@@ -79,7 +92,7 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
 
     # Add to dated
-    print(f"User : {user} - Adding entry for song \"{song}\".")
+    logging.info(f"Adding entry for song \"{song}\".")
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
@@ -88,16 +101,16 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
         user.insert(new_song_id, today)
 
 def check_user(user : db.User) -> None:
-    print(f"User : {user} - Process started.")
+    logging.info("Process started.")
     while True:
         is_playing = False
         wait_time = default_wait_time
-        print(f"User : {user} - Looking for a playing song...")
+        logging.info("Looking for playing song...")
 
         try:
             currently_playing = user.api.current_user_playing_track()
         except ConnectionError:
-            print(f"User : {user} - Connection failed!")
+            logging.error("Connection failed!")
             continue
 
         add = False
@@ -123,17 +136,17 @@ def check_user(user : db.User) -> None:
                     current_track_title = currently_playing["item"]["name"]
                     duration = currently_playing["item"]["duration_ms"]
 
-                    print(f"User : {user} - Track found playing \"{current_track_title}\".")
+                    logging.info(f"Track found playing \"{current_track_title}\".")
 
                     # The program gives three seconds of spare because the API call might take some time
                     threshold = round(duration * PROGRESS_THRESHOLD) - 3000
                     if double_check and last_track_title == current_track_title:
                         if current_progress >= threshold:
-                            print(f"User : {user} - Double check passed.")
+                            logging.info("Double check passed.")
                             add = True
                             double_check = False
                         else:
-                            print(f"User : {user} - Double check not passed yet.")
+                            logging.info("Double check not passed yet.")
                             wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
                     elif last_track_title != current_track_title and current_progress < threshold:
@@ -145,13 +158,13 @@ def check_user(user : db.User) -> None:
                             add = True
                         else:
                             double_check = True
-                            print(f"User : {user} - Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
-                            print(f"User : {user} - Checking again in {wait_time} seconds...")
+                            logging.info(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
+                            logging.info(f"Checking again in {wait_time} seconds...")
                 else:
                     double_check = False
 
         if add:
-            print(f'User : {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
+            logging.info(f"Song detected, \"{currently_playing['item']['name']}\"")
 
             insert_song(user, currently_playing)
 
@@ -164,27 +177,30 @@ def check_user(user : db.User) -> None:
                 f.write(json.dumps(last_track_info, indent=4))
 
         else:
-            print(f"User : {user} - Listening check not passed.")
+            logging.info("Listening check not passed.")
 
         # Never let the wait time go over the max active wait time
         if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
-            print(f"User : {user} - Wait time was over max active wait time. Overriding to max wait time.")
+            logging.info("Wait time was over max active wait time. Overriding to max wait time.")
             wait_time = MAX_ACTIVE_WAIT_TIME
 
         # Wait before checking again to avoid being rate limited or using my API quota
-        print(f"User : {user} - Waiting {wait_time} seconds...")
+        logging.info(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)
 
 def main() -> None:
     for user in users:
-        print(f"Starting user check process for user {user}...")
-        process = multiprocessing.Process(target=check_user, args=(user,))
+        logging.info(f"Starting user check process for user {user}...")
+        process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
         process.start()
 
 if __name__ == "__main__":
 
+    logging.info("Program starting!")
+
     # Make sure the database in the config.ini exists.
     if not os.path.exists(DATABASE):
+        logging.warn(f"No database file found at \"{DATABASE}\", creating new database.")
         db.create_db()
 
     users = []
