@@ -25,21 +25,21 @@ logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-client_id = config["SPOTIFY"]["CLIENT_ID"]
-client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
-redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
+CLIENT_ID = config["SPOTIFY"]["CLIENT_ID"]
+CLIENT_SECRET = config["SPOTIFY"]["CLIENT_SECRET"]
+REDIRECT_URI = config["SPOTIFY"]["REDIRECT_URI"]
 
 
-default_wait_time = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
-active_wait_time = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
+DEFAULT_WAIT_TIME = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
+ACTIVE_WAIT_TIME = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
 MAX_ACTIVE_WAIT_TIME = int(config["SETTINGS"]["MAX_ACTIVE_WAIT_TIME"])
 PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
 
-os.environ["SPOTIPY_CLIENT_ID"] = client_id
-os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
-os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
+os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
+os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
+os.environ["SPOTIPY_REDIRECT_URI"] = REDIRECT_URI
 
 
 # Check last.json to make sure it has the needed structure.
@@ -104,7 +104,7 @@ def check_user(user : db.User) -> None:
     logging.info("Process started.")
     while True:
         is_playing = False
-        wait_time = default_wait_time
+        wait_time = DEFAULT_WAIT_TIME
         logging.info("Looking for playing song...")
 
         try:
@@ -130,7 +130,7 @@ def check_user(user : db.User) -> None:
             if currently_playing:
                 if currently_playing["is_playing"]:
                     is_playing = True
-                    wait_time = active_wait_time
+                    wait_time = ACTIVE_WAIT_TIME
 
                     current_progress = currently_playing["progress_ms"]
                     current_track_title = currently_playing["item"]["name"]
