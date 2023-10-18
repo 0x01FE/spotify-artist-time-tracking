@@ -4,6 +4,7 @@ from typing import Literal
 import json
 import sqlite3
 import datetime
+import logging
 import configparser
 
 import spotipy
@@ -15,6 +16,10 @@ Note to anyone reading this. I'm aware the way I'm selecting the tables is bad!
 I'll rewrite it using SQLAlchemy I swear
 '''
 
+
+# Get logger
+
+logger = logging.getLogger(__name__)
 
 # Note that SQLite can only work with dates in the YYYY-MM-DD format.
 
@@ -230,3 +235,5 @@ def create_db() -> None:
         cur.execute('CREATE TABLE "dated" ( "song" INTEGER NOT NULL, "user" INTEGER NOT NULL, "date" TEXT NOT NULL )')
         cur.execute('CREATE TABLE "songs" ( "id" INTEGER NOT NULL, "name" TEXT NOT NULL, "length" INTEGER NOT NULL, "album" INTEGER NOT NULL, "artist" INTEGER NOT NULL, "spotify_id" TEXT )')
         cur.execute('CREATE TABLE "users" ( "id" INTEGER, "name" TEXT NOT NULL, PRIMARY KEY("id" AUTOINCREMENT) )')
+
+    logger.info("New database file created.")

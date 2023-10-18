@@ -7,17 +7,31 @@ This program uses a config.ini file for some basic variables. This is an example
 
 ```ini
 [SPOTIFY]
-client_id = your_apps_id  
-client_secret = your_apps_secret  
-redirect_uri = your_apps_redirect  
+client_id = your_apps_id
+client_secret = your_apps_secret
+redirect_uri = your_apps_redirect
 scopes = user-read-playback-state user-read-currently-playing user-top-read user-read-recently-played user-read-playback-position
 
 [SETTINGS]
-wait_time = 90  
-db_path = ./data/foo.db  
+default_wait_time = 180
+active_wait_time = 45
+max_active_wait_time = 90
+progress_threshold = 0.75
+db_path = ./data/foo.db
 users = bar,xar,tar
 ```
 
+Here's a brief explantation to some of the more confusing settings.
+
+To understand some of the settings I'll also provide a high level overview of how the program functions.
+
+The program will start and then create a process for each user in the configuration file. After these processes are created they each start a loop that will start by checking with the Spotify API what a user is listening to. If the user is not listening to anything the program will do nothing and wait __default\_wait\_time__ seconds before checking again.
+
+If the user is listening to something but does not meet the __progress\_threshold__ (0.75 being 75% of the way through the song), then it will check the users progress again in x seconds when the user should meet the threshold.
+
+If the program has already added the song the user is listening to it will wait __active\_wait\_time__ seconds before checking again.
+
+__max\_active\_wait\_time__ is the max amount of time in seconds that the program will wait at a time to see if a user is at the threshold to record the track.
 
 
 # Setup

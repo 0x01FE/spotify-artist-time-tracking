@@ -1,38 +1,69 @@
 #!/usr/local/bin/python3.11
 
 import os
+import sys
 import json
 import time
 import configparser
 import datetime
 import pytz
-
+import multiprocessing
+import logging
 
 from requests.exceptions import ConnectionError
 
 import db
 
+# Logging
+
+FORMAT = "%(asctime)s - Thread : %(processName)s %(levelname)s - %(message)s"
+logging.basicConfig(filename="./data/log.log", encoding="utf-8", level=logging.INFO, format=FORMAT)
+logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+
+
+# Setup
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-client_id = config["SPOTIFY"]["CLIENT_ID"]
-client_secret = config["SPOTIFY"]["CLIENT_SECRET"]
-redirect_uri = config["SPOTIFY"]["REDIRECT_URI"]
+CLIENT_ID = config["SPOTIFY"]["CLIENT_ID"]
+CLIENT_SECRET = config["SPOTIFY"]["CLIENT_SECRET"]
+REDIRECT_URI = config["SPOTIFY"]["REDIRECT_URI"]
 
 
-default_wait_time = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
-active_wait_time = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
+DEFAULT_WAIT_TIME = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
+ACTIVE_WAIT_TIME = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
+MAX_ACTIVE_WAIT_TIME = int(config["SETTINGS"]["MAX_ACTIVE_WAIT_TIME"])
 PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
 
-os.environ["SPOTIPY_CLIENT_ID"] = client_id
-os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
-os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
+os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
+os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
+os.environ["SPOTIPY_REDIRECT_URI"] = REDIRECT_URI
 
 
+# Check last.json to make sure it has the needed structure.
+def check_last_json() -> None:
+    if not os.path.exists("./data/last.json"):
+        logging.warn("No last.json file found!")
+        with open("./data/last.json", "w+") as f:
+            pass
 
+    with open("./data/last.json", "r") as f:
+        last_track_info = json.loads(f.read())
 
+    for user in users:
+        if user.name not in last_track_info:
+            logging.warn(f"Invalid JSON data for user {user}!")
+            last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+        else:
+            for key in ['last_progress', 'last_track_title', 'double_check']:
+                if key not in last_track_info[user.name]:
+                    logging.warn(f"Invalid keys for user {user}!")
+                    last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+
+    with open("./data/last.json", "w") as f:
+        f.write(json.dumps(last_track_info, indent=4))
 
 # Write info from currently_playing to a specified file
 def insert_song(user : db.User, currently_playing : dict) -> None:
@@ -61,7 +92,7 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
 
     # Add to dated
-    print("Updating dated table...")
+    logging.info(f"Adding entry for song \"{song}\".")
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
@@ -69,104 +100,116 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
     else:
         user.insert(new_song_id, today)
 
-
-
-def main() -> None:
-
-    """
-    TODO @0x01FE
-
-    Pretty sure this needs to be rewritten with asyncio
-    """
+def check_user(user : db.User) -> None:
+    logging.info("Process started.")
     while True:
-        print("#"*20)
-        wait_time = default_wait_time
-        for user in users:
-            print("-"*20)
-            print(f"User: {user} - Looking for a playing song...")
+        is_playing = False
+        wait_time = DEFAULT_WAIT_TIME
+        logging.info("Looking for playing song...")
 
-            try:
-                currently_playing = user.api.current_user_playing_track()
-            except ConnectionError:
-                print(f"Users : {user} - Connection failed")
-                continue
+        try:
+            currently_playing = user.api.current_user_playing_track()
+        except ConnectionError:
+            logging.error("Connection failed!")
+            continue
 
-            add = False
+        add = False
 
-            with open("./data/last.json", "r") as f:
-                last_track_info = json.loads(f.read())
+        with open("./data/last.json", "r") as f:
+            last_track_info = json.loads(f.read())
 
-            if user.name not in last_track_info:
-                add = True
-                last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
-            else:
-                last_progress = last_track_info[user.name]["last_progress"]
-                last_track_title = last_track_info[user.name]["last_track_title"]
-                double_check = last_track_info[user.name]["double_check"]
+        if user.name not in last_track_info:
+            add = True
+            last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+        else:
+            last_progress = last_track_info[user.name]["last_progress"]
+            last_track_title = last_track_info[user.name]["last_track_title"]
+            double_check = last_track_info[user.name]["double_check"]
 
-                # Series of checks to see if the program should actually consider this a "listen"
-                if currently_playing:
-                    if currently_playing["is_playing"]:
+            # Series of checks to see if the program should actually consider this a "listen"
+            if currently_playing:
+                if currently_playing["is_playing"]:
+                    is_playing = True
+                    wait_time = ACTIVE_WAIT_TIME
 
-                        wait_time = active_wait_time
+                    current_progress = currently_playing["progress_ms"]
+                    current_track_title = currently_playing["item"]["name"]
+                    duration = currently_playing["item"]["duration_ms"]
 
-                        current_progress = currently_playing["progress_ms"]
-                        current_track_title = currently_playing["item"]["name"]
-                        duration = currently_playing["item"]["duration_ms"]
+                    logging.info(f"Track found playing \"{current_track_title}\".")
 
-                        # The program gives three seconds of spare because the API call might take some time
-                        threshold = round(duration * PROGRESS_THRESHOLD) - 3000
-                        if double_check and last_track_title == current_track_title and current_progress >= threshold:
-                            print(f"User: {user} - Double check passed.")
+                    # The program gives three seconds of spare because the API call might take some time
+                    threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                    if double_check and last_track_title == current_track_title:
+                        if current_progress >= threshold:
+                            logging.info("Double check passed.")
                             add = True
                             double_check = False
+                        else:
+                            logging.info("Double check not passed yet.")
+                            wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
-                        elif last_track_title != current_track_title and current_progress < threshold:
+                    elif last_track_title != current_track_title and current_progress < threshold:
 
-                            wait_time = (round(duration * 0.6)/1000) - round(current_progress/1000)
+                        wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
-                            if wait_time <= 3:
-                                double_check = False
-                                add = True
-                            else:
-                                double_check = True
-                                print(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
-                                print(f"Checking again in {wait_time} seconds...")
+                        if wait_time <= 3:
+                            double_check = False
+                            add = True
+                        else:
+                            double_check = True
+                            logging.info(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
+                            logging.info(f"Checking again in {wait_time} seconds...")
+                else:
+                    double_check = False
 
+        if add:
+            logging.info(f"Song detected, \"{currently_playing['item']['name']}\"")
 
-            if add:
-                print(f'User: {user} - Song detected, \"{currently_playing["item"]["name"]}\"')
+            insert_song(user, currently_playing)
 
-                insert_song(user, currently_playing)
+        if (double_check and currently_playing) or add or is_playing:
+            last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
+            last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
+            last_track_info[user.name]["double_check"] = double_check
 
-            if double_check or add:
-                last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
-                last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
-                last_track_info[user.name]["double_check"] = double_check
+            with open("./data/last.json", "w") as f:
+                f.write(json.dumps(last_track_info, indent=4))
 
-                with open("./data/last.json", "w") as f:
-                    f.write(json.dumps(last_track_info, indent=4))
+        else:
+            logging.info("Listening check not passed.")
 
-            else:
-                print(f"User: {user} - Listening check not passed.")
-
+        # Never let the wait time go over the max active wait time
+        if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
+            logging.info("Wait time was over max active wait time. Overriding to max wait time.")
+            wait_time = MAX_ACTIVE_WAIT_TIME
 
         # Wait before checking again to avoid being rate limited or using my API quota
-        print("#"*20 + "\n")
-        print(f"Waiting {wait_time} seconds...")
+        logging.info(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)
 
-
+def main() -> None:
+    for user in users:
+        logging.info(f"Starting user check process for user {user}...")
+        process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
+        process.start()
 
 if __name__ == "__main__":
 
+    logging.info("Program starting!")
+
     # Make sure the database in the config.ini exists.
     if not os.path.exists(DATABASE):
+        logging.warn(f"No database file found at \"{DATABASE}\", creating new database.")
         db.create_db()
 
     users = []
     # Setup all users
     for user in config["SETTINGS"]["USERS"].split(","):
         users.append(db.User(name=user))
+
+    # Check that a valid last.json exists
+    check_last_json()
+
 
     main()
