@@ -10,6 +10,7 @@ import pytz
 import multiprocessing
 import logging
 
+import logging.handlers
 from requests.exceptions import ConnectionError
 
 import db
@@ -17,8 +18,7 @@ import db
 # Logging
 
 FORMAT = "%(asctime)s - Thread : %(processName)s %(levelname)s - %(message)s"
-logging.basicConfig(filename="./data/log.log", encoding="utf-8", level=logging.INFO, format=FORMAT)
-logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+logging.basicConfig(encoding="utf-8", level=logging.INFO, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5), logging.StreamHandler(sys.stdout)])
 
 
 # Setup
@@ -66,7 +66,7 @@ def check_last_json() -> None:
         f.write(json.dumps(last_track_info, indent=4))
 
 # Write info from currently_playing to a specified file
-def insert_song(user : db.User, currently_playing : dict, time : int) -> None:
+def insert_song(user : db.User, currently_playing : dict, listen_time : int) -> None:
 
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
@@ -96,9 +96,9 @@ def insert_song(user : db.User, currently_playing : dict, time : int) -> None:
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
-        user.insert(song_id, today, time)
+        user.insert(song_id, today, listen_time)
     else:
-        user.insert(new_song_id, today, time)
+        user.insert(new_song_id, today, listen_time)
 
 def check_user(user : db.User) -> None:
     logging.info("Process started.")
@@ -143,7 +143,7 @@ def check_user(user : db.User) -> None:
                         logging.info("Double check passed.")
                         add = True
                         double_check = False
-                        time = duration
+                        listen_time = duration
                     else:
                         logging.info("Double check not passed yet.")
                         wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
@@ -152,11 +152,13 @@ def check_user(user : db.User) -> None:
                     double_check = False
 
                     # This part isn't perfect because you could've paused for some amount of time but I just can't tell that with how the spotify API is setup
-                    time = last_progress + (last_wait_time - current_progress)
+                    listen_time = last_progress + (last_wait_time - current_progress)
 
                     # If somehow time is over the duration of the song then just go with the last recorded progress
-                    if time > last_duration:
-                        time = last_progress
+                    if listen_time > last_duration:
+                        listen_time = last_progress
+
+                    logging.info(f"Skip detected, recording listen event time as {listen_time}.")
 
                 elif last_track_title != current_track_title and current_progress < threshold:
 
@@ -175,7 +177,7 @@ def check_user(user : db.User) -> None:
         if add:
             logging.info(f"Song detected, \"{currently_playing['item']['name']}\"")
 
-            insert_song(user, currently_playing, time)
+            insert_song(user, currently_playing, listen_time)
 
         # Never let the wait time go over the max active wait time
         if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
