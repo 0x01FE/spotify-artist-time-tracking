@@ -210,12 +210,13 @@ class User():
         self,
         song : int,
         date : datetime.datetime,
-        time : int
+        time : int,
+        skip : bool
     ) -> None:
         with Opener(DATABASE) as (con, cur):
             date = date.strftime(DATE_FORMAT)
 
-            cur.execute('INSERT INTO "listen-events" VALUES (?, ?, ?, ?)', [song, self.id, date, time])
+            cur.execute('INSERT INTO "listen-events" VALUES (?, ?, ?, ?, ?)', [song, self.id, date, time, skip])
 
 
 """
