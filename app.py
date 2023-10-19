@@ -57,16 +57,16 @@ def check_last_json() -> None:
             logging.warn(f"Invalid JSON data for user {user}!")
             last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
         else:
-            for key in ['last_progress', 'last_track_title', 'double_check']:
+            for key in ['last_progress', 'last_track_title', 'double_check', "last_wait_time", "duration"]:
                 if key not in last_track_info[user.name]:
                     logging.warn(f"Invalid keys for user {user}!")
-                    last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
+                    last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False, "last_wait_time" : 0, "duration" : 0}
 
     with open("./data/last.json", "w") as f:
         f.write(json.dumps(last_track_info, indent=4))
 
 # Write info from currently_playing to a specified file
-def insert_song(user : db.User, currently_playing : dict) -> None:
+def insert_song(user : db.User, currently_playing : dict, time : int) -> None:
 
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
@@ -96,9 +96,9 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
-        user.insert(song_id, today)
+        user.insert(song_id, today, time)
     else:
-        user.insert(new_song_id, today)
+        user.insert(new_song_id, today, time)
 
 def check_user(user : db.User) -> None:
     logging.info("Process started.")
@@ -118,71 +118,83 @@ def check_user(user : db.User) -> None:
         with open("./data/last.json", "r") as f:
             last_track_info = json.loads(f.read())
 
-        if user.name not in last_track_info:
-            add = True
-            last_track_info[user.name] = {"last_progress" : -1, "last_track_title" : "null_", "double_check" : False}
-        else:
-            last_progress = last_track_info[user.name]["last_progress"]
-            last_track_title = last_track_info[user.name]["last_track_title"]
-            double_check = last_track_info[user.name]["double_check"]
+        last_duration = last_track_info[user.name]["duration"]
+        last_wait_time = last_track_info[user.name]["last_wait_time"]
+        last_progress = last_track_info[user.name]["last_progress"]
+        last_track_title = last_track_info[user.name]["last_track_title"]
+        double_check = last_track_info[user.name]["double_check"]
 
-            # Series of checks to see if the program should actually consider this a "listen"
-            if currently_playing:
-                if currently_playing["is_playing"]:
-                    is_playing = True
-                    wait_time = ACTIVE_WAIT_TIME
+        # Series of checks to see if the program should actually consider this a "listen"
+        if currently_playing:
+            if currently_playing["is_playing"]:
+                is_playing = True
+                wait_time = ACTIVE_WAIT_TIME
 
-                    current_progress = currently_playing["progress_ms"]
-                    current_track_title = currently_playing["item"]["name"]
-                    duration = currently_playing["item"]["duration_ms"]
+                current_progress = currently_playing["progress_ms"]
+                current_track_title = currently_playing["item"]["name"]
+                duration = currently_playing["item"]["duration_ms"]
 
-                    logging.info(f"Track found playing \"{current_track_title}\".")
+                logging.info(f"Track found playing \"{current_track_title}\".")
 
-                    # The program gives three seconds of spare because the API call might take some time
-                    threshold = round(duration * PROGRESS_THRESHOLD) - 3000
-                    if double_check and last_track_title == current_track_title:
-                        if current_progress >= threshold:
-                            logging.info("Double check passed.")
-                            add = True
-                            double_check = False
-                        else:
-                            logging.info("Double check not passed yet.")
-                            wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
-
-                    elif last_track_title != current_track_title and current_progress < threshold:
-
+                # The program gives three seconds of spare because the API call might take some time
+                threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                if double_check and last_track_title == current_track_title:
+                    if current_progress >= threshold:
+                        logging.info("Double check passed.")
+                        add = True
+                        double_check = False
+                        time = duration
+                    else:
+                        logging.info("Double check not passed yet.")
                         wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
-
-                        if wait_time <= 3:
-                            double_check = False
-                            add = True
-                        else:
-                            double_check = True
-                            logging.info(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
-                            logging.info(f"Checking again in {wait_time} seconds...")
-                else:
+                elif double_check and last_track_title != current_track_title:
+                    add = True
                     double_check = False
+
+                    # This part isn't perfect because you could've paused for some amount of time but I just can't tell that with how the spotify API is setup
+                    time = last_progress + (last_wait_time - current_progress)
+
+                    # If somehow time is over the duration of the song then just go with the last recorded progress
+                    if time > last_duration:
+                        time = last_progress
+
+                elif last_track_title != current_track_title and current_progress < threshold:
+
+                    wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
+
+                    if wait_time <= 3:
+                        double_check = False
+                        add = True
+                    else:
+                        double_check = True
+                        logging.info(f"Playing track \"{current_track_title}\" does not meet time requirment to be recorded.")
+                        logging.info(f"Checking again in {wait_time} seconds...")
+            else:
+                double_check = False
 
         if add:
             logging.info(f"Song detected, \"{currently_playing['item']['name']}\"")
 
-            insert_song(user, currently_playing)
+            insert_song(user, currently_playing, time)
 
+        # Never let the wait time go over the max active wait time
+        if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
+            logging.info("Wait time was over max active wait time. Overriding to max wait time.")
+            wait_time = MAX_ACTIVE_WAIT_TIME
+
+        # Write to last.json
         if (double_check and currently_playing) or add or is_playing:
             last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
             last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
             last_track_info[user.name]["double_check"] = double_check
+            last_track_info[user.name]["last_wait_time"] = wait_time
+            last_track_info[user.name]["duration"] = duration
 
             with open("./data/last.json", "w") as f:
                 f.write(json.dumps(last_track_info, indent=4))
 
         else:
             logging.info("Listening check not passed.")
-
-        # Never let the wait time go over the max active wait time
-        if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
-            logging.info("Wait time was over max active wait time. Overriding to max wait time.")
-            wait_time = MAX_ACTIVE_WAIT_TIME
 
         # Wait before checking again to avoid being rate limited or using my API quota
         logging.info(f"Waiting {wait_time} seconds...")

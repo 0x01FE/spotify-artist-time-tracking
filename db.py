@@ -27,6 +27,7 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 SCOPES = config["SPOTIFY"]["SCOPES"]
 DATABASE = config["SETTINGS"]["DB_PATH"]
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 class Opener():
@@ -200,6 +201,7 @@ class User():
     Parameters:
         song (int) : Id of the song in the event.
         date (datetime.datetime) : Datetime object representing the day of the event.
+        time (int) : Amount of time the song was listened to.
 
     Returns:
         None
@@ -207,12 +209,13 @@ class User():
     def insert(
         self,
         song : int,
-        date : datetime.datetime
+        date : datetime.datetime,
+        time : int
     ) -> None:
         with Opener(DATABASE) as (con, cur):
-            date = date.strftime("%Y-%m-%d")
+            date = date.strftime(DATE_FORMAT)
 
-            cur.execute("INSERT INTO dated VALUES (?, ?, ?)", [song, self.id, date])
+            cur.execute("INSERT INTO dated VALUES (?, ?, ?, ?)", [song, self.id, date, time])
 
 
 """
