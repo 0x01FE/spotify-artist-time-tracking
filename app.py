@@ -160,6 +160,10 @@ def check_user(user : db.User) -> None:
                     if listen_time > last_duration:
                         listen_time = last_progress
 
+                    # If the time is somehow negative, count it as 0
+                    if listen_time < 0:
+                        listen_time = 0
+
                     logging.info(f"Skip detected, recording listen event time as {listen_time}.")
 
                 elif last_track_title != current_track_title and current_progress < threshold:
