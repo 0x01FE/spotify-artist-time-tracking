@@ -29,11 +29,14 @@ CLIENT_ID = config["SPOTIFY"]["CLIENT_ID"]
 CLIENT_SECRET = config["SPOTIFY"]["CLIENT_SECRET"]
 REDIRECT_URI = config["SPOTIFY"]["REDIRECT_URI"]
 
+## Times
 
 DEFAULT_WAIT_TIME = int(config["SETTINGS"]["DEFAULT_WAIT_TIME"]) # in seconds
 ACTIVE_WAIT_TIME = int(config["SETTINGS"]["ACTIVE_WAIT_TIME"])
 MAX_ACTIVE_WAIT_TIME = int(config["SETTINGS"]["MAX_ACTIVE_WAIT_TIME"])
 PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
+ERROR_WAIT_TIME = int(config["SETTINGS"]["ERROR_WAIT_TIME"])
+
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
 
@@ -110,7 +113,8 @@ def check_user(user : db.User) -> None:
         try:
             currently_playing = user.api.current_user_playing_track()
         except ConnectionError:
-            logging.error("Connection failed!")
+            logging.error(f"Connection failed! - {ConnectionError.response.content}")
+            time.sleep(ERROR_WAIT_TIME)
             continue
 
         add = False
