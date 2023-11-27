@@ -17,7 +17,7 @@ import db
 
 # Logging
 
-FORMAT = "%(asctime)s - Thread : %(processName)s %(levelname)s - %(message)s"
+FORMAT = "%(asctime)s - Process : %(processName)s %(levelname)s - %(message)s"
 logging.basicConfig(encoding="utf-8", level=logging.INFO, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
 
 
