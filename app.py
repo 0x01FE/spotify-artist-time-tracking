@@ -152,6 +152,7 @@ def check_user(user : db.User) -> None:
                     else:
                         logging.info("Double check not passed yet.")
                         wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
+                        logging.info(f"Checking again in {wait_time} seconds...")
                 elif double_check and last_track_title != current_track_title:
                     add = True
                     double_check = False
