@@ -39,6 +39,7 @@ ERROR_WAIT_TIME = int(config["SETTINGS"]["ERROR_WAIT_TIME"])
 
 DATABASE = config["SETTINGS"]["DB_PATH"]
 users = []
+processes = []
 
 os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
 os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
@@ -214,10 +215,28 @@ def check_user(user : db.User) -> None:
         time.sleep(wait_time)
 
 def main() -> None:
+    global users
     for user in users:
         logging.info(f"Starting user check process for user {user}...")
         process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
         process.start()
+        processes.append(user.name)
+
+    # Check for newly added users
+    while True:
+        users = []
+        # Setup all users
+        for user in db.get_users():
+            users.append(db.User(name=user[1]))
+
+        for user in users:
+            if user.name not in processes:
+                logging.info(f"Starting user check process for user {user}...")
+                process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
+                process.start()
+                processes.append(user.name)
+
+        time.sleep(60 * 5)
 
 if __name__ == "__main__":
 
@@ -230,8 +249,8 @@ if __name__ == "__main__":
 
     users = []
     # Setup all users
-    for user in config["SETTINGS"]["USERS"].split(","):
-        users.append(db.User(name=user))
+    for user in db.get_users():
+        users.append(db.User(name=user[1]))
 
     # Check that a valid last.json exists
     check_last_json()

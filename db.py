@@ -67,8 +67,10 @@ class User():
         else:
             self.id = results
 
+        spotify_id = self.get_spotify_id()
+
         # Setup API connection
-        with open(f"./data/.cache-{self.id}", 'r') as f:
+        with open(f"./data/.{spotify_id}-cache", 'r') as f:
             cache_data = json.loads(f.read())
 
         cache_handler = spotipy.MemoryCacheHandler(
@@ -86,6 +88,13 @@ class User():
 
     # Database Methods
 
+    def get_spotify_id(self) -> str:
+        with Opener(DATABASE) as (con, cur):
+            cur.execute("SELECT * FROM users WHERE id = ?", [self.id, ])
+
+            results = cur.fetchall()
+
+        return results[0][2]
 
     """
     Get the latest song id.
@@ -241,3 +250,12 @@ def create_db() -> None:
         cur.execute('CREATE TABLE "users" ( "id" INTEGER, "name" TEXT NOT NULL, PRIMARY KEY("id" AUTOINCREMENT) )')
 
     logger.info("New database file created.")
+
+def get_users() -> tuple | None:
+    with Opener(DATABASE) as (con, cur):
+        cur.execute('SELECT * FROM users;')
+
+        results = cur.fetchall()
+
+    return results
+
