@@ -17,7 +17,7 @@ import db
 
 # Logging
 
-FORMAT = "%(asctime)s - Process : %(processName)s %(levelname)s - %(message)s"
+FORMAT = "%(asctime)s %(levelname)s - %(message)s"
 logging.basicConfig(encoding="utf-8", level=logging.INFO, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
 
 
@@ -38,8 +38,7 @@ PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 ERROR_WAIT_TIME = int(config["SETTINGS"]["ERROR_WAIT_TIME"])
 
 DATABASE = config["SETTINGS"]["DB_PATH"]
-users = []
-processes = []
+wait_times: dict[db.User, int] = {}
 
 os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
 os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
@@ -48,6 +47,8 @@ os.environ["SPOTIPY_REDIRECT_URI"] = REDIRECT_URI
 
 # Check last.json to make sure it has the needed structure.
 def check_last_json() -> None:
+    users: list[db.User] = db.get_users()
+
     if not os.path.exists("./data/last.json"):
         logging.warn("No last.json file found!")
         with open("./data/last.json", "w+") as f:
@@ -104,17 +105,74 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
     else:
         user.insert(new_song_id, today, listen_time, skip)
 
-def check_user(user : db.User) -> None:
-    logging.info("Process started.")
+# Could return none if there are no users in the dict passed but that should never happen
+def find_lowest_wait_time(wait_times: dict[db.User, int]) -> db.User:
+    lowest: int = float('inf')
+    lowest_user: db.User = None
+    for user in wait_times:
+        if wait_times[user] < lowest:
+            lowest = wait_times[user]
+            lowest_user = user
+
+    return lowest_user
+
+def main() -> None:
+
+    # Initial User setup
+    logging.debug("Getting users for the first time...")
+    users: list[db.Users] = db.get_users()
+
+    if not users:
+        logging.error("No users found.")
+        exit(1)
+
+    for user in users:
+        if user not in wait_times:
+            logging.debug(f"New user {user} found. Adding them to the dict...")
+            wait_times[user] = 0
+
+    logging.info("Listen check loop started.")
+
+    current_user: db.User = users[0] # Current user the loop is checking on
+
+    # The guts of the program
     while True:
-        is_playing = False
-        wait_time = DEFAULT_WAIT_TIME
+
+        # Check for new users
+        logging.debug("Checking for new users...")
+        users = db.get_users()
+
+        if not users:
+            logging.warn("No users found during new user check?")
+            exit(1)
+
+        for user in users:
+            if user not in wait_times:
+                logging.debug(f"New user {user} found. Adding them to the dict...")
+                wait_times[user] = 0
+
+
+
+        # Do the listen check on current user
         logging.info("Looking for playing song...")
 
+        is_playing = False
+        wait_time = DEFAULT_WAIT_TIME
+
         try:
-            currently_playing = user.api.current_user_playing_track()
-        except ConnectionError:
-            logging.error(f"Connection failed! - {ConnectionError.response.content}")
+            currently_playing = current_user.api.current_user_playing_track()
+        except ConnectionError as e:
+            logging.error("Connection error")
+
+            if e.response:
+                logging.debug(f"Response: {e.response}")
+                if e.response.content:
+                    logging.debug(f"Content: {e.response.content}")
+
+            time.sleep(ERROR_WAIT_TIME)
+            continue
+        except Exception as e:
+            logging.error(f"Some error happened: {e}")
             time.sleep(ERROR_WAIT_TIME)
             continue
 
@@ -124,11 +182,11 @@ def check_user(user : db.User) -> None:
         with open("./data/last.json", "r") as f:
             last_track_info = json.loads(f.read())
 
-        last_duration = last_track_info[user.name]["duration"]
-        last_wait_time = last_track_info[user.name]["last_wait_time"]
-        last_progress = last_track_info[user.name]["last_progress"]
-        last_track_title = last_track_info[user.name]["last_track_title"]
-        double_check = last_track_info[user.name]["double_check"]
+        last_duration = last_track_info[current_user.name]["duration"]
+        last_wait_time = last_track_info[current_user.name]["last_wait_time"]
+        last_progress = last_track_info[current_user.name]["last_progress"]
+        last_track_title = last_track_info[current_user.name]["last_track_title"]
+        double_check = last_track_info[current_user.name]["double_check"]
 
         # Series of checks to see if the program should actually consider this a "listen"
         if currently_playing:
@@ -198,11 +256,11 @@ def check_user(user : db.User) -> None:
 
         # Write to last.json
         if (double_check and currently_playing) or add or is_playing:
-            last_track_info[user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
-            last_track_info[user.name]["last_track_title"] = currently_playing["item"]["name"]
-            last_track_info[user.name]["double_check"] = double_check
-            last_track_info[user.name]["last_wait_time"] = wait_time
-            last_track_info[user.name]["duration"] = duration
+            last_track_info[current_user.name]["last_progress"] = currently_playing["item"]["duration_ms"]
+            last_track_info[current_user.name]["last_track_title"] = currently_playing["item"]["name"]
+            last_track_info[current_user.name]["double_check"] = double_check
+            last_track_info[current_user.name]["last_wait_time"] = wait_time
+            last_track_info[current_user.name]["duration"] = duration
 
             with open("./data/last.json", "w") as f:
                 f.write(json.dumps(last_track_info, indent=4))
@@ -210,33 +268,23 @@ def check_user(user : db.User) -> None:
         else:
             logging.info("Listening check not passed.")
 
-        # Wait before checking again to avoid being rate limited or using my API quota
+
+        # Figure out the next user to check and the wait time.
+        wait_times[current_user] = wait_time
+
+        current_user = find_lowest_wait_time(wait_times)
+        wait_time = wait_times[current_user]
+
+        # wait 5 seconds to avoid rate limits if 0 or under
+        if wait_time <= 0:
+            wait_time = 5
+
+        # Change all other wait times to account for the passage of time
+        for user in wait_times:
+            wait_times[user] -= wait_time
+
         logging.info(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)
-
-def main() -> None:
-    global users
-    for user in users:
-        logging.info(f"Starting user check process for user {user}...")
-        process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
-        process.start()
-        processes.append(user.name)
-
-    # Check for newly added users
-    while True:
-        users = []
-        # Setup all users
-        for user in db.get_users():
-            users.append(db.User(name=user[1]))
-
-        for user in users:
-            if user.name not in processes:
-                logging.info(f"Starting user check process for user {user}...")
-                process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
-                process.start()
-                processes.append(user.name)
-
-        time.sleep(60 * 5)
 
 if __name__ == "__main__":
 
@@ -247,13 +295,7 @@ if __name__ == "__main__":
         logging.warn(f"No database file found at \"{DATABASE}\", creating new database.")
         db.create_db()
 
-    users = []
-    # Setup all users
-    for user in db.get_users():
-        users.append(db.User(name=user[1]))
-
     # Check that a valid last.json exists
     check_last_json()
-
 
     main()
