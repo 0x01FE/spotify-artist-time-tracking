@@ -18,7 +18,7 @@ import db
 # Logging
 
 FORMAT = "%(asctime)s - Process : %(processName)s %(levelname)s - %(message)s"
-logging.basicConfig(encoding="utf-8", level=logging.INFO, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
+logging.basicConfig(encoding="utf-8", level=logging.DEBUG, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
 
 
 # Setup
@@ -113,8 +113,8 @@ def check_user(user : db.User) -> None:
 
         try:
             currently_playing = user.api.current_user_playing_track()
-        except ConnectionError:
-            logging.error(f"Connection failed! - {ConnectionError.response.content}")
+        except Exception as e:
+            logging.error(f"Some error happend while connecting to spotify api - {Exception}")
             time.sleep(ERROR_WAIT_TIME)
             continue
 
@@ -215,21 +215,21 @@ def check_user(user : db.User) -> None:
         time.sleep(wait_time)
 
 def main() -> None:
-    global users
     for user in users:
         logging.info(f"Starting user check process for user {user}...")
         process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
         process.start()
         processes.append(user.name)
+        time.sleep(1)
 
     # Check for newly added users
     while True:
-        users = []
+        new_users = []
         # Setup all users
         for user in db.get_users():
-            users.append(db.User(name=user[1]))
+            new_users.append(db.User(name=user[1]))
 
-        for user in users:
+        for user in new_users:
             if user.name not in processes:
                 logging.info(f"Starting user check process for user {user}...")
                 process = multiprocessing.Process(target=check_user, args=(user,), name=f"{user}")
@@ -247,7 +247,7 @@ if __name__ == "__main__":
         logging.warn(f"No database file found at \"{DATABASE}\", creating new database.")
         db.create_db()
 
-    users = []
+    # users = []
     # Setup all users
     for user in db.get_users():
         users.append(db.User(name=user[1]))
