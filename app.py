@@ -183,6 +183,7 @@ def main() -> None:
             last_track_info = json.loads(f.read())
 
         last_duration = last_track_info[current_user.name]["duration"]
+        # TODO @0x01fe last wait time might not work anymore
         last_wait_time = last_track_info[current_user.name]["last_wait_time"]
         last_progress = last_track_info[current_user.name]["last_progress"]
         last_track_title = last_track_info[current_user.name]["last_track_title"]
@@ -202,6 +203,7 @@ def main() -> None:
 
                 # The program gives three seconds of spare because the API call might take some time
                 threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                # TODO @0x01fe check by track id instead of title
                 if double_check and last_track_title == current_track_title:
                     if current_progress >= threshold:
                         logging.info("Double check passed.")
