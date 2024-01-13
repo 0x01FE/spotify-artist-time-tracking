@@ -25,13 +25,13 @@ class User():
         self.wait_time = 0
 
         # Get Id or create Id
-        results = self.get_id("users", self.name)
+        results = db.get_id("users", self.name)
 
         if not results:
             with db.Opener(db.DATABASE) as (con, cur):
                 cur.execute("INSERT INTO users (name) VALUES (?)", [self.name])
 
-            self.id = self.get_id("users", self.name)
+            self.id = db.get_id("users", self.name)
         else:
             self.id = results
 
