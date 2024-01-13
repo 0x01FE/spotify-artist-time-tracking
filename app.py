@@ -15,6 +15,7 @@ import logging.handlers
 from requests.exceptions import ConnectionError
 
 import db
+from user import User
 
 # Logging
 
@@ -40,12 +41,7 @@ PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 ERROR_WAIT_TIME = int(config["SETTINGS"]["ERROR_WAIT_TIME"])
 
 DATABASE = config["SETTINGS"]["DB_PATH"]
-
-# user id to wait time in seconds
-wait_times: dict[int, int] = {}
-
-# user id to user object
-user_objects: dict[int, db.User] = {}
+active_users: list[User] = []
 
 os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
 os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
@@ -54,7 +50,7 @@ os.environ["SPOTIPY_REDIRECT_URI"] = REDIRECT_URI
 
 # Check last.json to make sure it has the needed structure.
 def check_last_json() -> None:
-    users: list[db.User] = db.get_users()
+    users: list[User] = db.get_users()
 
     if not os.path.exists("./data/last.json"):
         logging.warn("No last.json file found!")
@@ -64,6 +60,7 @@ def check_last_json() -> None:
     with open("./data/last.json", "r") as f:
         last_track_info = json.loads(f.read())
 
+    # TODO @0x01fe key this by user id instead of name
     for user in users:
         if user.name not in last_track_info:
             logging.warn(f"Invalid JSON data for user {user}!")
@@ -78,7 +75,7 @@ def check_last_json() -> None:
         f.write(json.dumps(last_track_info, indent=4))
 
 # Write info from currently_playing to a specified file
-def insert_song(user : db.User, currently_playing : dict, listen_time : int, skip : bool) -> None:
+def insert_song(user : User, currently_playing : dict, listen_time : int, skip : bool) -> None:
 
     # Grab the info from the API response
     song = currently_playing["item"]["name"]
@@ -87,10 +84,10 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
 
     album = currently_playing["item"]["album"]["name"]
     album_spotify_id = currently_playing["item"]["album"]["id"]
-    if not (album_id := user.get_id("albums", album)):
-        album_id = user.add_id("albums", album, album_spotify_id)
+    if not (album_id := db.get_id("albums", album)):
+        album_id = db.add_id("albums", album, album_spotify_id)
 
-    new_song_id = user.get_latest_song_id() + 1
+    new_song_id = db.get_latest_song_id() + 1
 
     logging.debug(f"Adding song {song} for user {user} with time {listen_time} ms. Skip: {skip}")
 
@@ -98,11 +95,11 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
         artist_name = artist["name"].replace(" ", "-").lower()
         artist_spotify_id = artist["id"]
 
-        if not (artist_id := user.get_id("artists", artist_name)):
-            artist_id = user.add_id("artists", artist_name, artist_spotify_id)
+        if not (artist_id := db.get_id("artists", artist_name)):
+            artist_id = db.add_id("artists", artist_name, artist_spotify_id)
 
-        if not (song_id := user.get_song_id(song, artist_id)):
-            user.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)
+        if not (song_id := db.get_song_id(song, artist_id)):
+            db.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)
 
 
     # Add to dated
@@ -110,67 +107,68 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
     today = datetime.datetime.now(pytz.timezone("US/Central"))
 
     if song_id:
-        user.insert(song_id, today, listen_time, skip)
+        db.insert(song_id, user, today, listen_time, skip)
     else:
-        user.insert(new_song_id, today, listen_time, skip)
+        db.insert(new_song_id, user, today, listen_time, skip)
 
 # Could return none if there are no users in the dict passed but that should never happen
-def find_lowest_wait_time(wait_times: dict[int, int]) -> int:
-    lowest: int = float('inf')
-    lowest_user: int = None
-    for user in wait_times:
-        if wait_times[user] < lowest:
-            lowest = wait_times[user]
-            lowest_user = user
+def find_lowest_wait_time(active_users : list[User]) -> User:
+    lowest: User = active_users[0]
+    for active_user in active_users[1:]:
+        if active_user.wait_time < lowest.wait_time:
+            lowest = active_user
 
-    return lowest_user
+    return lowest
 
 def main() -> None:
 
     # Initial User setup
     logging.debug("Getting users for the first time...")
-    users: list[db.Users] = db.get_users()
+    users: list[User] = db.get_users()
 
     if not users:
         logging.error("No users found.")
         exit(1)
 
     for user in users:
-        if user not in wait_times:
-            logging.debug(f"New user {user} found. Adding them to the dict...")
-            wait_times[user.id] = 0
-            user_objects[user.id] = user
+        active_users.append(user)
 
     logging.info("Listen check loop started.")
 
-    current_user: db.User = users[0] # Current user the loop is checking on
+    current_user: User = users[0] # Current user the loop is checking on
 
     # The guts of the program
     while True:
 
         # Check for new users
         logging.debug("Checking for new users...")
-        users = db.get_users()
+        users: list[User] = db.get_users()
 
         if not users:
             logging.warn("No users found during new user check?")
             exit(1)
 
         for user in users:
-            if user.id not in wait_times:
-                logging.debug(f"New user {user} found. Adding them to the dict...")
-                wait_times[user.id] = 0
 
+            # Check if user is not in active users
+            exists: bool = False
+            for active_user in active_users:
+                if active_user.id == user.id:
+                    exists = True
+                    break
 
+            # If the user is not in active_users add them
+            if not exists:
+                active_users.append(user)
 
         # Do the listen check on current user
         logging.info(f"{current_user} - Looking for playing song...")
 
-        is_playing = False
-        wait_time = DEFAULT_WAIT_TIME
+        is_playing: bool = False
+        wait_time: int = DEFAULT_WAIT_TIME
 
         try:
-            currently_playing = current_user.api.current_user_playing_track()
+            currently_playing: dict | None = current_user.api.current_user_playing_track()
         except ConnectionError as e:
             logging.error("Connection error")
 
@@ -186,17 +184,18 @@ def main() -> None:
             time.sleep(ERROR_WAIT_TIME)
             continue
 
-        add = False
-        skip = False
+        add: bool = False
+        skip: bool = False
 
         with open("./data/last.json", "r") as f:
             last_track_info = json.loads(f.read())
 
-        last_duration = last_track_info[current_user.name]["duration"]
-        last_wait_time = last_track_info[current_user.name]["last_wait_time"]
-        last_progress = last_track_info[current_user.name]["last_progress"]
-        last_track_title = last_track_info[current_user.name]["last_track_title"]
-        double_check = last_track_info[current_user.name]["double_check"]
+        last_duration: int = last_track_info[current_user.name]["duration"]
+        # TODO @0x01fe last wait time might not work anymore
+        last_wait_time: int = last_track_info[current_user.name]["last_wait_time"]
+        last_progress: int = last_track_info[current_user.name]["last_progress"]
+        last_track_title: str = last_track_info[current_user.name]["last_track_title"]
+        double_check: bool = last_track_info[current_user.name]["double_check"]
 
         # Series of checks to see if the program should actually consider this a "listen"
         if currently_playing:
@@ -211,7 +210,8 @@ def main() -> None:
                 logging.info(f"Track found playing \"{current_track_title}\".")
 
                 # The program gives three seconds of spare because the API call might take some time
-                threshold = round(duration * PROGRESS_THRESHOLD) - 3000
+                threshold: int = round(duration * PROGRESS_THRESHOLD) - 3000
+                # TODO @0x01fe check by track id instead of title
                 if double_check and last_track_title == current_track_title:
                     if current_progress >= threshold:
                         logging.info("Double check passed.")
@@ -234,9 +234,9 @@ def main() -> None:
                     if listen_time > last_duration:
                         listen_time = last_progress
 
-                    # If the time is somehow negative, count it as 0
+                    # If the time is somehow negative, don't add it
                     if listen_time < 0:
-                        listen_time = 0
+                        add = False
 
                     logging.info(f"Skip detected, recording listen event time as {listen_time}.")
 
@@ -246,6 +246,7 @@ def main() -> None:
 
                     if wait_time <= 10:
                         double_check = False
+                        listen_time = duration
                         add = True
                     else:
                         double_check = True
@@ -282,21 +283,18 @@ def main() -> None:
 
 
         # Figure out the next user to check and the wait time.
-        wait_times[current_user.id] = wait_time
-        logging.debug(f"Wait Times: {wait_times}")
+        current_user.wait_time = wait_time
 
-        current_user = user_objects[find_lowest_wait_time(wait_times)]
-
-        wait_time = wait_times[current_user.id]
-        logging.debug(f"User with the lowest time is {current_user}, wait time is {wait_time}.")
+        current_user = find_lowest_wait_time(active_users)
+        wait_time = current_user.wait_time
 
         # wait 5 seconds to avoid rate limits if 0 or under
         if wait_time <= 0:
             wait_time = 5
 
         # Change all other wait times to account for the passage of time
-        for user in wait_times:
-            wait_times[user] -= wait_time
+        for active_user in active_users:
+            active_user.wait_time -= wait_time
 
         logging.info(f"Waiting {wait_time} seconds...")
         time.sleep(wait_time)

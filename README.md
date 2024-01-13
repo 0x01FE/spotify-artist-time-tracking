@@ -2,6 +2,8 @@
 
 This is a script I wrote to track the amount of time I've listened to various artists, albums, and songs on Spotify. The time listened is stored in an SQLite database.
 
+Current Version: 3.0.0
+
 # Config File Format
 This program uses a config.ini file for some basic variables. This is an example of how I have mine set up.
 
@@ -17,8 +19,8 @@ default_wait_time = 180
 active_wait_time = 45
 max_active_wait_time = 90
 progress_threshold = 0.75
+error_wait_time = 30
 db_path = ./data/foo.db
-users = bar,xar,tar
 ```
 
 Here's a brief explantation to some of the more confusing settings.
@@ -44,7 +46,7 @@ I personally run this program in a container. If you want to run it another way 
 Run this docker command to build the image.
 
 ```sh
-docker build . -t spotify-tracking:v2
+docker build . -t spotify-tracking:v3
 ```
 
 After that configure the example docker compose file in the repo and run,
