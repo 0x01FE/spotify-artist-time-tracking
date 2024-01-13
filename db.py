@@ -193,21 +193,7 @@ def create_db() -> None:
 
     logger.info("New database file created.")
 
-<<<<<<< HEAD
 def get_users() -> list[User] | None:
-=======
-
-"""
-Get all the users in the database.
-
-Parameters:
-    None
-
-Returns:
-    tuple of users or None
-"""
-def get_users() -> tuple | None:
->>>>>>> refs/remotes/origin/async-listen
     with Opener(DATABASE) as (con, cur):
         cur.execute('SELECT * FROM users;')
 
