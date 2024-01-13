@@ -251,11 +251,15 @@ def create_db() -> None:
 
     logger.info("New database file created.")
 
-def get_users() -> tuple | None:
+def get_users() -> list[User] | None:
     with Opener(DATABASE) as (con, cur):
         cur.execute('SELECT * FROM users;')
 
         results = cur.fetchall()
 
-    return results
+    users = []
+    for user in results:
+        users.append(User(name=user[1]))
+
+    return users
 

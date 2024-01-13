@@ -2,6 +2,7 @@
 
 import os
 import sys
+import math
 import json
 import time
 import configparser
@@ -18,7 +19,8 @@ import db
 # Logging
 
 FORMAT = "%(asctime)s %(levelname)s - %(message)s"
-logging.basicConfig(encoding="utf-8", level=logging.INFO, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
+# TODO add env var to pass for debug logs
+logging.basicConfig(encoding="utf-8", level=logging.DEBUG, format=FORMAT, handlers=[logging.handlers.RotatingFileHandler(filename="./data/log.log", backupCount=5, maxBytes=1000000), logging.StreamHandler(sys.stdout)])
 
 
 # Setup
@@ -38,7 +40,12 @@ PROGRESS_THRESHOLD = float(config["SETTINGS"]["PROGRESS_THRESHOLD"])
 ERROR_WAIT_TIME = int(config["SETTINGS"]["ERROR_WAIT_TIME"])
 
 DATABASE = config["SETTINGS"]["DB_PATH"]
-wait_times: dict[db.User, int] = {}
+
+# user id to wait time in seconds
+wait_times: dict[int, int] = {}
+
+# user id to user object
+user_objects: dict[int, db.User] = {}
 
 os.environ["SPOTIPY_CLIENT_ID"] = CLIENT_ID
 os.environ["SPOTIPY_CLIENT_SECRET"] = CLIENT_SECRET
@@ -85,6 +92,8 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
 
     new_song_id = user.get_latest_song_id() + 1
 
+    logging.debug(f"Adding song {song} for user {user} with time {listen_time} ms. Skip: {skip}")
+
     for artist in currently_playing["item"]["artists"]:
         artist_name = artist["name"].replace(" ", "-").lower()
         artist_spotify_id = artist["id"]
@@ -106,9 +115,9 @@ def insert_song(user : db.User, currently_playing : dict, listen_time : int, ski
         user.insert(new_song_id, today, listen_time, skip)
 
 # Could return none if there are no users in the dict passed but that should never happen
-def find_lowest_wait_time(wait_times: dict[db.User, int]) -> db.User:
+def find_lowest_wait_time(wait_times: dict[int, int]) -> int:
     lowest: int = float('inf')
-    lowest_user: db.User = None
+    lowest_user: int = None
     for user in wait_times:
         if wait_times[user] < lowest:
             lowest = wait_times[user]
@@ -129,7 +138,8 @@ def main() -> None:
     for user in users:
         if user not in wait_times:
             logging.debug(f"New user {user} found. Adding them to the dict...")
-            wait_times[user] = 0
+            wait_times[user.id] = 0
+            user_objects[user.id] = user
 
     logging.info("Listen check loop started.")
 
@@ -147,14 +157,14 @@ def main() -> None:
             exit(1)
 
         for user in users:
-            if user not in wait_times:
+            if user.id not in wait_times:
                 logging.debug(f"New user {user} found. Adding them to the dict...")
-                wait_times[user] = 0
+                wait_times[user.id] = 0
 
 
 
         # Do the listen check on current user
-        logging.info("Looking for playing song...")
+        logging.info(f"{current_user} - Looking for playing song...")
 
         is_playing = False
         wait_time = DEFAULT_WAIT_TIME
@@ -210,7 +220,7 @@ def main() -> None:
                         listen_time = duration
                     else:
                         logging.info("Double check not passed yet.")
-                        wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
+                        wait_time = math.ceil((round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000))
                         logging.info(f"Checking again in {wait_time} seconds...")
                 elif double_check and last_track_title != current_track_title:
                     add = True
@@ -234,7 +244,7 @@ def main() -> None:
 
                     wait_time = (round(duration * PROGRESS_THRESHOLD)/1000) - round(current_progress/1000)
 
-                    if wait_time <= 3:
+                    if wait_time <= 10:
                         double_check = False
                         add = True
                     else:
@@ -243,11 +253,13 @@ def main() -> None:
                         logging.info(f"Checking again in {wait_time} seconds...")
             else:
                 double_check = False
+        else:
+            double_check = False
 
         if add:
             logging.info(f"Song detected, \"{currently_playing['item']['name']}\"")
 
-            insert_song(user, currently_playing, listen_time, skip)
+            insert_song(current_user, currently_playing, listen_time, skip)
 
         # Never let the wait time go over the max active wait time
         if wait_time > MAX_ACTIVE_WAIT_TIME and is_playing:
@@ -270,10 +282,13 @@ def main() -> None:
 
 
         # Figure out the next user to check and the wait time.
-        wait_times[current_user] = wait_time
+        wait_times[current_user.id] = wait_time
+        logging.debug(f"Wait Times: {wait_times}")
 
-        current_user = find_lowest_wait_time(wait_times)
-        wait_time = wait_times[current_user]
+        current_user = user_objects[find_lowest_wait_time(wait_times)]
+
+        wait_time = wait_times[current_user.id]
+        logging.debug(f"User with the lowest time is {current_user}, wait time is {wait_time}.")
 
         # wait 5 seconds to avoid rate limits if 0 or under
         if wait_time <= 0:
