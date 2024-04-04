@@ -75,8 +75,9 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
 
     album = currently_playing["item"]["album"]["name"]
     album_spotify_id = currently_playing["item"]["album"]["id"]
-    if not (album_id := user.get_id("albums", album)):
-        album_id = user.add_id("albums", album, album_spotify_id)
+    if not (album_id := user.get_album_id(album)):
+        cover_art_url: str = currently_playing["item"]["album"]["images"][0]["url"]
+        album_id = user.add_album(album, album_spotify_id, cover_art_url)
 
     new_song_id = user.get_latest_song_id() + 1
 
@@ -84,8 +85,9 @@ def insert_song(user : db.User, currently_playing : dict) -> None:
         artist_name = artist["name"].replace(" ", "-").lower()
         artist_spotify_id = artist["id"]
 
-        if not (artist_id := user.get_id("artists", artist_name)):
-            artist_id = user.add_id("artists", artist_name, artist_spotify_id)
+        if not (artist_id := user.get_artist_id(artist_name)):
+            icon_url: str = user.api.artist(artist_spotify_id)["images"][0]["url"]
+            artist_id = user.add_artist(artist_name, artist_spotify_id, icon_url)
 
         if not (song_id := user.get_song_id(song, artist_id)):
             user.add_song(new_song_id, song, duration, album_id, artist_id, song_spotify_id)

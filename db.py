@@ -1,13 +1,15 @@
 #!/usr/local/bin/python3.11
 
-from typing import Literal
+import os
 import json
+import typing
+import logging
 import sqlite3
 import datetime
-import logging
 import configparser
 
 import spotipy
+import sqlparse
 
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -40,6 +42,20 @@ class Opener():
         self.con.commit()
         self.con.close()
 
+SQL_DIR = "./sql/"
+queries = {}
+for sql_file in os.listdir(SQL_DIR):
+    file_name = sql_file.split('.')[0]
+
+    with open(SQL_DIR + sql_file, 'r') as file:
+        raw_data = file.read()
+
+    statements = sqlparse.split(raw_data)
+    if len(statements) == 1:
+        queries[file_name] = statements[0]
+    else:
+        queries[file_name] = statements
+
 
 """
 Represents a user, their connection to the spotify api, and their connection to the database.
@@ -56,7 +72,7 @@ class User():
         self.name = name
 
         # Get Id or create Id
-        results = self.get_id("users", self.name)
+        results = self.get_user_id(self.name)
 
         if not results:
             with Opener(DATABASE) as (con, cur):
@@ -100,7 +116,7 @@ class User():
     """
     def get_latest_song_id(self) -> int:
         with Opener(DATABASE) as (con, cur):
-            cur.execute("SELECT * FROM songs ORDER BY id DESC LIMIT 1")
+            cur.execute(queries["get_latest_song_id"])
 
             results = cur.fetchall()
 
@@ -117,16 +133,21 @@ class User():
         table (Literal[str]) : Table that you are adding name to
         name (str) : Name of the item you are adding
         spotify_id (str | None) : spotify_id if this is hooked to spotify
+        art_url (str) : art for album or artist icon
 
     Returns:
         id (int) : Id of the added item
     """
-    def add_id(self, table : Literal["artists", "albums", "users"], name : str, spotify_id : str | None = None) -> int:
+    def add_artist(name : str, spotify_id : str, icon_url : str) -> int:
         with Opener(DATABASE) as (con, cur):
-            if spotify_id:
-                cur.execute("INSERT INTO '{}' (name, spotify_id) VALUES (?, ?)".format(table), [name, spotify_id])
-            else:
-                cur.execute("INSERT INTO '{}' (name) VALUES (?)".format(table), [name])
+            cur.execute(queries["insert_artist"], [name, spotify_id, icon_url])
+
+        return cur.lastrowid
+
+
+    def add_album(name : str, spotify_id : str, cover_art_url : str) -> int:
+        with Opener(DATABASE) as (con, cur):
+            cur.execute(queries["insert_album"], [name, spotify_id, cover_art_url])
 
         return cur.lastrowid
 
@@ -146,10 +167,7 @@ class User():
     """
     def add_song(self, id : int, name : str, length : int, album : int, artist : int, spotify_id : str | None = None) -> int:
         with Opener(DATABASE) as (con, cur):
-            if spotify_id:
-                cur.execute("INSERT INTO songs (id, name, length, album, artist, spotify_id) VALUES (?, ?, ?, ?, ?, ?)", [id, name, length, album, artist, spotify_id])
-            else:
-                cur.execute("INSERT INTO songs (id, name, length, album, artist) VALUES (?, ?, ?, ?, ?)", [id, name, length, album, artist])
+            cur.execute(queries["insert_song"], [id, name, length, album, artist, spotify_id])
 
         return cur.lastrowid
 
@@ -164,15 +182,32 @@ class User():
     Returns:
         id (int | None) : Id if found, otherwise None.
     """
-    def get_id(self, table : Literal["artists", "albums", "users"], name : str) -> int | None:
+    def get_artist_id(self, name : str) -> int | None:
         with Opener(DATABASE) as (con, cur):
-            cur.execute("SELECT * FROM '{}' WHERE name = ?".format(table), [name])
+            cur.execute(queries["get_artist_id"], [name])
             results = cur.fetchall()
 
         if results:
             return results[0][0]
         return None
 
+    def get_album_id(self, name : str) -> int | None:
+        with Opener(DATABASE) as (con, cur):
+            cur.execute(queries["get_album_id"], [name])
+            results = cur.fetchall()
+
+        if results:
+            return results[0][0]
+        return None
+
+    def get_user_id(self, name : str) -> int | None:
+        with Opener(DATABASE) as (con, cur):
+            cur.execute(queries["get_user_id"], [name])
+            results = cur.fetchall()
+
+        if results:
+            return results[0][0]
+        return None
 
     """
     Get the id of a song by name and artist id.
@@ -186,7 +221,7 @@ class User():
     """
     def get_song_id(self, song_name : str, artist_id : int) -> int | None:
         with Opener(DATABASE) as (con, cur):
-            cur.execute("SELECT * FROM songs WHERE name = ? AND artist = ?", [song_name, artist_id])
+            cur.execute(queries["get_song_id"], [song_name, artist_id])
             results = cur.fetchall()
 
         if results:
