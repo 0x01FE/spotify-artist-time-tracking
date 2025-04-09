@@ -53,5 +53,6 @@ docker compose up
 ```
 Add the -d flag if you want it to run in the background.
 
+# Database
 
-
+![ListeningDBDiagram](https://github.com/user-attachments/assets/a12b23ae-bf56-4319-b32b-68eab5937e56)
