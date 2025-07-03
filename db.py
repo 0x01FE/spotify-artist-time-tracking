@@ -8,7 +8,7 @@ import configparser
 
 import sqlparse
 
-from user import User
+from UserInfo import User
 
 '''
 Note to anyone reading this. I'm aware the way I'm selecting the tables is bad!
@@ -67,7 +67,7 @@ Parameters:
 Returns:
     id (int) : Id of the added item
 """
-def add_artist(name : str, spotify_id : str, icon_url : str) -> int:
+def add_artist(name : str, spotify_id : str, icon_url : str | None) -> int:
     with Opener(DATABASE) as (con, cur):
         cur.execute(queries["insert_artist"], [name, spotify_id, icon_url])
 
@@ -234,9 +234,18 @@ def get_users() -> list[User] | None:
 
         results = cur.fetchall()
 
-    users = []
+    users: list[User] = []
     for user in results:
         users.append(User(name=user[1]))
+
+    to_remove = []
+    for user in users:
+        if not user.api:
+            logging.warning(f"No valid api creds found for user {user.name}")
+            to_remove.append(user)
+
+    for user in to_remove:
+        users.remove(user)
 
     return users
 

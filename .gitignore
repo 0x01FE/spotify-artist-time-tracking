@@ -8,3 +8,4 @@ data
 *.db
 *.sh
 *.yml
+!dummy-track-info.json
